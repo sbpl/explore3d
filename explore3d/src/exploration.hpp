@@ -7,6 +7,7 @@
 #include <cmath>
 #include <queue>
 #include <cstdio>
+#include <mutex>
 
 typedef double CostType;
 #define MaxCost 1e99

@@ -2,7 +2,7 @@
 ///(c) 2014 Ros wrapper header
 #include "exploration.hpp"
 #include <ros/ros.h>
-#include <ros/nav_msgs>
+#include <nav_msgs>
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
 
@@ -13,6 +13,9 @@ class EP_wrapper {
 public:
   void plannerthread(void);
   void init(void);
+  void PoseCallback(const nav_msgs::Path& msg);
+  void MapCallback(const  pcl::PointCloud<pcl::PointXYZI>::ConstPtr& msg);
+
 
 private:
   ExplorationPlanner_c EP;

@@ -19,9 +19,21 @@ void EP_wrapper::plannerthread(void) {
 
 	EP.PartialUpdateMap(pts);
 	std::vector<Locations_c> goals = EP.NewGoals(robot_loc);
-	nav_msgs::Path goals;
-	//TODO: goals. set values
-	Goal_pub_.publish(goals);
+
+	nav_msgs::Path goal_list;
+	goal_list.poses.resize(2);
+
+	goal_list.poses[0].position.x = goals[0].x;
+	goal_list.poses[0].position.y = goals[0].y;
+	goal_list.poses[0].position.z = goals[0].z;
+	goal_list.poses[0].orientation.y = goals[0].theta;  //TODO fix this
+
+	goal_list.poses[1].position.x = goals[1].x;
+	goal_list.poses[1].position.y = goals[1].y;
+	goal_list.poses[1].position.z = goals[1].z;
+	goal_list.poses[1].orientation.y = goals[1].theta;  //TODO fix this
+
+	Goal_pub_.publish(goal_list);
   }
 }
 
@@ -114,13 +126,13 @@ void EP_wrapper::init(void) {
 
 
 int main(int argc, char* argv) {
-nh = ros::init(argc, argv, "Exploration");
-EP_wrapper EPW;
-EPW.init();
+  nh = ros::init(argc, argv, "Exploration");
+  EP_wrapper EPW;
+  EPW.init();
 
-while (ros::ok() ) {
-  ros.spin();
-}
-EP_thread.join();
+  while (ros::ok() ) {
+	ros.spin();
+  }
+  EP_thread.join();
 }
 
