@@ -2,8 +2,13 @@
 ///(c) 2014 Ros wrapper header
 #include "exploration.hpp"
 #include <ros/ros.h>
-#include <nav_msgs>
-#include <pcl_ros/point_cloud.h>
+#include <nav_msgs/Path.h>
+
+
+#include <sensor_msgs/PointCloud2.h>
+// PCL specific includes
+#include <pcl/ros/conversions.h>
+#include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
 #define PLANNERRATE_ 0.1
@@ -15,18 +20,20 @@ public:
   void init(void);
   void PoseCallback(const nav_msgs::Path& msg);
   void MapCallback(const  pcl::PointCloud<pcl::PointXYZI>::ConstPtr& msg);
-
+  ~EP_wrapper();
 
 private:
-  ExplorationPlanner_c EP;
+  ExplorationPlanner EP;
   ExpParams_c params;
-  Locations_c CurrentLocations_;
+  std::vector<Locations_c> CurrentLocations_;
   std::vector<MapElement_c> MapPts_;
 
   double scale;
 
   std::mutex data_mutex_;
+  std::thread *EP_thread_;
   ros::Publisher Goal_pub_;
   ros::Subscriber Map_sub_, Pose_sub_;
-  ros::Nodehandle nh;
+  std::string goal_topic_, map_topic_, pose_topic_;
+  ros::NodeHandle nh;
 };

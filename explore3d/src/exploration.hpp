@@ -8,6 +8,7 @@
 #include <queue>
 #include <cstdio>
 #include <mutex>
+#include <thread>
 
 typedef double CostType;
 #define MaxCost 1e99
@@ -97,7 +98,7 @@ public:
   uint ObjectMaxElev;
   uint obs, freespace, unk;
   uint NumAngles;
-  double MinDist;
+  uint MinDist;
 };
 
 class ExplorationPlanner {
@@ -109,7 +110,7 @@ private:
   CoverageMap_c coverage_;
   uint ObjectMaxElev_, NumAngles_;
   unsigned char FREESPACE, OBS, UNK;
-  double MinDist_;
+  uint MinDist_;
 
   std::vector<SearchPts_c> mp_;  //motion primitives
   std::vector<std::vector<std::vector<CostType> > > CostToPts_;   //[robot][x][y]
