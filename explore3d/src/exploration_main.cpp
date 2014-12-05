@@ -82,34 +82,52 @@ void EP_wrapper::init(void) {
   while(!ros::param::has("scale")) {ros::Duration(0.1).sleep();}
   nh.param<double>("scale", scale, 20);
 
-  nh.param<uint>("segbot/motionheight", Segbot.MotionHeight_, (uint)(0.0*scale)); // height to use for obstacles during motionheight (cells)
-  nh.param<uint>("segbot/sensorheight", Segbot.SensorHeight_, (uint)0.5*scale);  // height sensor is at (cells)
+  int segbot_motionheight, segbot_sensorheight, segbot_detectionrange, segbot_circularsize, hexa_motionheight, hexa_sensorheight, hexa_detectionrange, hexa_circularsize;
+  nh.param<int>("segbot/motionheight", segbot_motionheight, (int)(0.0*scale)); // height to use for obstacles during motionheight (cells)
+  Segbot.MotionHeight_ = (uint) segbot_motionheight;
+  nh.param<int>("segbot/sensorheight", segbot_sensorheight, (int)0.5*scale);  // height sensor is at (cells)
+  Segbot.SensorHeight_ = (uint) segbot_sensorheight;
   nh.param<double>("segbot/horizontalfov", Segbot.HorizontalFOV_, M_PI/8);
   nh.param<double>("segbot/verticalfov", Segbot.VerticalFOV_, M_PI/10);
-  nh.param<uint>("segbot/detectionrange", Segbot.DetectionRange_, (uint)5.0*scale);		// how far the sensor works (cells)
-  nh.param<uint>("segbot/circularsize", Segbot.CircularSize_, (uint)1.0*scale);			// how big the robot is (cells)
+  nh.param<int>("segbot/detectionrange", segbot_detectionrange, (int)5.0*scale);		// how far the sensor works (cells)
+  Segbot.DetectionRange_ = (uint) segbot_detectionrange;
+  nh.param<int>("segbot/circularsize", segbot_circularsize, (uint)1.0*scale);			// how big the robot is (cells)
+  Segbot.CircularSize_ = (uint) segbot_circularsize;
   nh.param<std::string>("segbot/name", Segbot.name, "Segbot");
-
-  nh.param<uint>("hexa/motionheight", Hexa.MotionHeight_, (uint)1.2*scale);
-  nh.param<uint>("hexa/sensorheight", Hexa.SensorHeight_, (uint)1.2*scale);
+  nh.param<int>("hexa/motionheight", hexa_motionheight, (int)1.2*scale);
+  Hexa.MotionHeight_ = (uint) hexa_motionheight;
+  nh.param<int>("hexa/sensorheight",hexa_sensorheight , (int)1.2*scale);
+  Hexa.SensorHeight_ = hexa_sensorheight;
   nh.param<double>("hexa/horizontalfov", Hexa.HorizontalFOV_, M_PI/8);
   nh.param<double>("hexa/verticalfov", Hexa.VerticalFOV_, M_PI/10);
-  nh.param<uint>("hexa/detectionrange", Hexa.DetectionRange_, (uint)5.0*scale);
-  nh.param<uint>("hexa/circularsize", Hexa.CircularSize_, (uint)1.0*scale);
+  nh.param<int>("hexa/detectionrange",hexa_detectionrange , (int)5.0*scale);
+  Hexa.DetectionRange_ = hexa_detectionrange;
+  nh.param<int>("hexa/circularsize", hexa_circularsize, (int)1.0*scale);
+  Hexa.CircularSize_ = hexa_circularsize;
   nh.param<std::string>("hexa/name", Hexa.name, "Hexa");
 
   params.robots.push_back(Segbot);
   params.robots.push_back(Hexa);
 
-  nh.param<uint>("sizex", params.size_x, 500);
-  nh.param<uint>("sizey", params.size_y, 500);
-  nh.param<uint>("sizez", params.size_z, 50);
-  nh.param<uint>("objectmaxelev", params.ObjectMaxElev, (uint) 1.5*scale);				// max height to consider for the OOI (cells)
-  nh.param<uint>("obsvalue", params.obs, 100);									// values for obstacles, freespace, unknown
-  nh.param<uint>("freevalue", params.freespace, 50);
-  nh.param<uint>("unkvalue", params.unk, 0);
-  nh.param<uint>("numangles", params.NumAngles, 16);							// number of thetas
-  nh.param<uint>("mindist", params.MinDist, (uint)1.2*scale);					// closest robots should operate without penalty (cells)
+  int sizex, sizey, sizez, objectmaxelev,obs, freespace, unk, numangles, mindist;
+  nh.param<int>("sizex", sizex, 500);
+  params.size_x = sizex;
+  nh.param<int>("sizey", sizey, 500);
+  params.size_y = sizey;
+  nh.param<int>("sizez", sizez, 50);
+  params.size_z = sizez;
+  nh.param<int>("objectmaxelev", objectmaxelev, (uint) 1.5*scale);				// max height to consider for the OOI (cells)
+  params.ObjectMaxElev = objectmaxelev;
+  nh.param<int>("obsvalue", obs, 100);									// values for obstacles, freespace, unknown
+  params.obs = obs;
+  nh.param<int>("freevalue", freespace, 50);
+  params.freespace = freespace;
+  nh.param<int>("unkvalue", unk, 0);
+  params.unk = unk;
+  nh.param<int>("numangles", numangles, 16);							// number of thetas
+  params.NumAngles = numangles;
+  nh.param<int>("mindist", mindist, (uint)1.2*scale);					// closest robots should operate without penalty (cells)
+  params.MinDist = mindist;
 
   nh.param<std::string>("goal_topic", goal_topic_, "goal_list");
   nh.param<std::string>("map_topic", map_topic_, "combined_map");
