@@ -411,6 +411,7 @@ void CoverageMap_c::UpdateDistances(void) {
 
 std::vector<Locations_c> ExplorationPlanner::NewGoals(std::vector<Locations_c> RobotLocations) {
   for (size_t ridx=0; ridx<RobotLocations.size(); ridx++) {
+	printf("poses r%li X%i Y%i Z%i a%i \n", ridx, RobotLocations[ridx].x, RobotLocations[ridx].y, RobotLocations[ridx].z, RobotLocations[ridx].theta);
 	Dijkstra(RobotLocations[ridx], ridx);
 	//printMap(RobotLocations[ridx].z);
 
