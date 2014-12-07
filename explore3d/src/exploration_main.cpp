@@ -6,7 +6,7 @@
 
 void EP_wrapper::plannerthread(void)
 {
-	ros::Rate looprate(PLANNERRATE_);
+	ros::Rate looprate(planner_rate);
 	std::vector<MapElement_c> pts;
 	std::vector<Locations_c> robot_loc;
 
@@ -136,6 +136,7 @@ void EP_wrapper::init(void)
 	got_first_pose_update = false;
 
 //  while(!ros::param::has("scale")) {ros::Duration(0.1).sleep();}
+	ph.param<double>("planner_rate", planner_rate, 0.5);
 	ph.param<double>("scale", scale, 20);
 
 	int segbot_motionheight, segbot_sensorheight, segbot_detectionrange, segbot_circularsize, hexa_motionheight, hexa_sensorheight,
@@ -262,6 +263,8 @@ double EP_wrapper::disrete_to_continuous(int disc, double res)
 void EP_wrapper::publish_goal_list(const std::vector<Locations_c>& goals)
 {
 	nav_msgs::Path goal_list;
+	goal_list.header.frame_id = frame_id;
+	goal_list.header.stamp = ros::Time::now();
 	goal_list.poses.resize(2);
 
 	//convert goals to world frame, continuous
@@ -328,6 +331,7 @@ void EP_wrapper::publish_point_cloud(const std::vector<pcl::PointXYZI>& points, 
 {
 	//make point cloud for goals
 	pcl::PointCloud<pcl::PointXYZI> cloud;
+	cloud.header.stamp = ros::Time::now();
 	cloud.header.frame_id = frame_id;
 	cloud.height = 1;
 

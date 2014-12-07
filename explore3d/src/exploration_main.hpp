@@ -12,8 +12,6 @@
 
 #include <tf/transform_listener.h>
 
-#define PLANNERRATE_ 0.5
-
 class EP_wrapper
 {
 public:
@@ -49,7 +47,7 @@ private:
 	void publish_point_cloud(const std::vector<pcl::PointXYZI> & points, const ros::Publisher & publisher);
 
 	double scale;
-
+	double planner_rate;
 	double origin_x;
 	double origin_y;
 	double origin_z;
