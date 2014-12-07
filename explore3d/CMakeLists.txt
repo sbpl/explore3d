@@ -7,8 +7,9 @@ include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
 #  Release        : w/o debug symbols, w/ optimization
 #  RelWithDebInfo : w/ debug symbols, w/ optimization
 #  MinSizeRel     : w/o debug symbols, w/ optimization, stripped binaries
-set(ROS_BUILD_TYPE RelWithDebInfo)
+
 set(ROS_COMPILE_FLAGS "-std=c++0x -Wall -pthread -O3") #-flto -Ofast -pedantic")
+set(ROS_BUILD_TYPE Release)
 
 rosbuild_init()
 
