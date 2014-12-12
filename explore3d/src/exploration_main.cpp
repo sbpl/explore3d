@@ -314,7 +314,7 @@ int EP_wrapper::continuous_angle_to_discrete(double cont, double res)
 	//set between 2pi and 0
 	if (cont < pi)
 	{
-		cont = pi - cont;
+		cont = 2*pi - cont;
 	}
 	double scaled = cont / res;
 	int d = static_cast<int>(round(scaled));
