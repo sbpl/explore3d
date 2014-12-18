@@ -40,11 +40,25 @@ private:
 
 	int continuous_to_discrete(double cont, double res);
 
-	double disrete_to_continuous(int disc, double res);
+	double discrete_to_continuous(int disc, double res);
 
 	void publish_goal_list(const std::vector<Locations_c> & goal_list);
 
+	template<typename T>
+	void get_point_cloud_from_map(const std::vector<T> &map, std::vector<pcl::PointXYZI> & points);
+
+	template<typename T>
+	void get_point_cloud_from_inner_dim(const std::vector<T> &map, std::vector<pcl::PointXYZI> & points, std::vector<int> & indicies , int depth);
+
+	template<typename T>
+	void get_point_cloud_from_inner_dim(const T &val, std::vector<pcl::PointXYZI> & points, std::vector<int> & indicies, int depth);
+
+	template<typename T>
+	void get_point_cloud_from_points(const std::vector<T> & point_list, std::vector<pcl::PointXYZI> & points);
+
 	void publish_point_cloud(const std::vector<pcl::PointXYZI> & points, const ros::Publisher & publisher);
+
+	void publish_planner_map();
 
 	double scale;
 	double planner_rate;
@@ -64,10 +78,11 @@ private:
 	std::thread *EP_thread_;
 	ros::Publisher Goal_pub_;
 	ros::Publisher Goal_point_cloud_pub;
+	ros::Publisher coverage_map_pub, cost_map_pub, frontier_map_pub, counts_map_pub;
 	ros::Subscriber Map_sub_, Pose_sub_;
 	std::string goal_topic_, map_topic_, pose_topic_, goal_point_cloud_topic;
 	ros::NodeHandle nh;
 	ros::NodeHandle ph;
-};
 
+};
 

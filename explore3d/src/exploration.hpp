@@ -72,8 +72,9 @@ public:
   uint x_size_;
   uint y_size_;
   uint z_size_;
-private:
   std::vector<std::vector<std::vector<char> > > map_;     //[x][y][z]
+private:
+
   std::vector<std::vector<std::vector<int> > > DistToObs_;   //[robot][x][y]
   unsigned char FREESPACE, OBS, UNK;
   std::vector<Robot_c>* robotsPtr_;
@@ -107,17 +108,7 @@ class ExplorationPlanner {
 protected:
   std::vector<Robot_c> robots_;
 private:
-  CoverageMap_c coverage_;
-  uint ObjectMaxElev_, NumAngles_;
-  unsigned char FREESPACE, OBS, UNK;
-  uint MinDist_;
 
-  std::vector<SearchPts_c> mp_;  //motion primitives
-  std::vector<std::vector<std::vector<CostType> > > CostToPts_;   //[robot][x][y]
-  std::vector<SearchPts_c> goal_;  //[robot]
-  std::vector<SearchPts_c> Frontier3d_;
-  std::vector<std::vector<std::vector<std::vector<int> > > > counts_;						// [robot][x[][y][angle]
-  std::vector<std::vector<std::vector<pts2d> > > VisibilityRings_;		// [robot][z][points]
 
   void PrecalcVisibilityCircles(void);
   void Dijkstra(Locations_c start, int robotnum);
@@ -132,8 +123,20 @@ private:
   void printCounts(uint x0, uint y0, uint x1, uint y1, uint rn);
   CostType EvalFxn(uint x, uint y, uint z, uint a, uint rn);
 
-
 public:
+
+  CoverageMap_c coverage_;
+  uint ObjectMaxElev_, NumAngles_;
+  unsigned char FREESPACE, OBS, UNK;
+  uint MinDist_;
+
+  std::vector<SearchPts_c> mp_;  //motion primitives
+  std::vector<std::vector<std::vector<CostType> > > CostToPts_;   //[robot][x][y]
+  std::vector<SearchPts_c> goal_;  //[robot]
+  std::vector<SearchPts_c> Frontier3d_;
+  std::vector<std::vector<std::vector<std::vector<int> > > > counts_;						// [robot][x[][y][angle]
+  std::vector<std::vector<std::vector<pts2d> > > VisibilityRings_;		// [robot][z][points]
+
   void Init(ExpParams_c initparams);
   void UpdateMap(CoverageMap_c new_map);
   void PartialUpdateMap(std::vector<MapElement_c> pts);
