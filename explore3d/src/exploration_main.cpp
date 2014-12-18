@@ -319,14 +319,15 @@ void EP_wrapper::yaw_to_quaternion(const double& yaw, geometry_msgs::Quaternion&
 int EP_wrapper::continuous_angle_to_discrete(double cont, double res)
 {
 	double pi = M_PI;
-	//set between 2pi and 0
-	if (cont < pi)
+
+ 	//set between 2pi and 0
+	if (cont < 0)
 	{
-		cont = pi - cont;
+		cont = 2*pi + cont;
 	}
 	double scaled = cont / res;
 	int d = static_cast<int>(round(scaled));
-	return d;
+        return d;
 }
 
 int EP_wrapper::discrete_anngle_to_continuous(int disc, double res)
