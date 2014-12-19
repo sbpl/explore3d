@@ -1,9 +1,5 @@
 <launch>
-
-<node pkg="explore3d" type="explore3d" respawn="false" name="exploration_planner" output="screen"  >
-
-<rosparam file = "$(find explore3d)/config/explore-3d_config.yaml" command="load"  />
-
-</node>
-
+    <node pkg="explore3d" type="explore3d" respawn="false" name="exploration_planner" output="screen"  >
+        <rosparam file = "$(find explore3d)/config/explore-3d_config.yaml" command="load"  />
+    </node>
 </launch>

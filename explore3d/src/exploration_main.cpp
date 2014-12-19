@@ -18,24 +18,24 @@ void EP_wrapper::plannerthread(void)
 		//do not execute planner until first map and pose updates are received
 		if (!(got_first_map_update && got_first_pose_update))
 		{
-			ROS_INFO("planner_thread: waiting for first map and pose update\n");
+			ROS_INFO("planner_thread: waiting for first map and pose update");
 			continue;
 		}
 
 		//update map and poses
 		std::unique_lock < std::mutex > data_lock(data_mutex_);
-		ROS_INFO("update map and poses, start\n");
+		ROS_INFO("update map and poses, start");
 		pts = MapPts_;
 		robot_loc = CurrentLocations_;
 		data_lock.unlock();
 		EP.PartialUpdateMap(pts);
 
-		ROS_INFO("update map and poses, done\n");
+		ROS_INFO("update map and poses, done");
 
 		//retrieve goals
-		ROS_INFO("get goals, start\n");
+		ROS_INFO("get goals, start");
 		std::vector<Locations_c> goals = EP.NewGoals(robot_loc);
-		ROS_INFO("get goals, done\n");
+		ROS_INFO("get goals, done");
 
 		publish_goal_list(goals);
 
@@ -103,7 +103,7 @@ void EP_wrapper::PoseCallback(const nav_msgs::PathConstPtr& msg)
 
 void EP_wrapper::MapCallback(const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& msg)
 {
-	ROS_INFO("map upate callback for seq %d\n", (int ) msg->header.seq);
+	ROS_INFO("map upate callback for seq %d", (int ) msg->header.seq);
 	std::unique_lock < std::mutex > data_lock(data_mutex_);
 	//TODO: this is inefficient
 	MapElement_c pt;
@@ -124,7 +124,7 @@ void EP_wrapper::MapCallback(const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& ms
 		MapPts_.push_back(pt);
 	}
 	data_lock.unlock();
-	ROS_INFO("map upate callback finished\n");
+	ROS_INFO("map upate callback finished");
 	got_first_map_update = true;
 }
 
@@ -331,7 +331,7 @@ void EP_wrapper::publish_point_cloud(const std::vector<pcl::PointXYZI>& points, 
 {
 	//make point cloud for goals
 	pcl::PointCloud<pcl::PointXYZI> cloud;
-	cloud.header.stamp = ros::Time::now();
+	cloud.header.stamp = ros::Time::now().toNSec();
 	cloud.header.frame_id = frame_id;
 	cloud.height = 1;
 
