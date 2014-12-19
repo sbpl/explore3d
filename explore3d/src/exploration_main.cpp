@@ -6,128 +6,121 @@
 
 void EP_wrapper::plannerthread(void)
 {
-	ros::Rate looprate(planner_rate);
-	std::vector<MapElement_c> pts;
-	std::vector<Locations_c> robot_loc;
+    ros::Rate looprate(planner_rate);
+    std::vector<MapElement_c> pts;
+    std::vector<Locations_c> robot_loc;
 
-	while (ros::ok())
-	{
+    while (ros::ok()) {
 
-		looprate.sleep();
+        looprate.sleep();
 
-		//do not execute planner until first map and pose updates are received
-		if (!(got_first_map_update && got_first_pose_update))
-		{
-			ROS_INFO("planner_thread: waiting for first map and pose update");
-			continue;
-		}
+        //do not execute planner until first map and pose updates are received
+        if (!(got_first_map_update && got_first_pose_update)) {
+            ROS_INFO("planner_thread: waiting for first map and pose update");
+            continue;
+        }
 
-		//update map and poses
-		std::unique_lock < std::mutex > data_lock(data_mutex_);
-		ROS_INFO("update map and poses, start");
-		pts = MapPts_;
-		robot_loc = CurrentLocations_;
-		data_lock.unlock();
-		EP.PartialUpdateMap(pts);
+        //update map and poses
+        std::unique_lock<std::mutex> data_lock(data_mutex_);
+        ROS_INFO("update map and poses, start");
+        pts = MapPts_;
+        robot_loc = CurrentLocations_;
+        data_lock.unlock();
+        EP.PartialUpdateMap(pts);
 
-		ROS_INFO("update map and poses, done");
+        ROS_INFO("update map and poses, done");
 
-		//retrieve goals
-		ROS_INFO("get goals, start");
-		std::vector<Locations_c> goals = EP.NewGoals(robot_loc);
-		ROS_INFO("get goals, done");
+        //retrieve goals
+        ROS_INFO("get goals, start");
+        std::vector<Locations_c> goals = EP.NewGoals(robot_loc);
+        ROS_INFO("get goals, done");
 
-		publish_goal_list(goals);
+        publish_goal_list(goals);
 
-		publish_planner_maps();
+        publish_planner_maps();
 
-		//clear the map points
-		MapPts_.clear();
+        //clear the map points
+        MapPts_.clear();
 
-	}
+    }
 }
 
 void EP_wrapper::PoseCallback(const nav_msgs::PathConstPtr& msg)
 {
-	Locations_c SegLoc, HexaLoc;
+    Locations_c SegLoc, HexaLoc;
 
-	auto poses = msg->poses;
+    auto poses = msg->poses;
 
-	if (poses.size() < 2)
-	{
-		ROS_ERROR("ERROR poses list provided is size %d when it should be size %d\n", (int ) poses.size(), 2);
-	}
+    if (poses.size() < 2) {
+        ROS_ERROR("ERROR poses list provided is size %d when it should be size %d\n", (int)poses.size(), 2);
+    }
 
-	//Convert poses from world continuous to map discrete
-	double yaw;
-	SegLoc.x = continuous_to_discrete(poses[0].pose.position.x - origin_x, resolution);
-	SegLoc.y = continuous_to_discrete(poses[0].pose.position.y - origin_y, resolution);
-	SegLoc.z = continuous_to_discrete(poses[0].pose.position.z - origin_z, resolution);
-	quaternion_to_yaw(poses[0].pose.orientation, yaw);
-	SegLoc.theta = continuous_angle_to_discrete(yaw, angle_resolution);
+    //Convert poses from world continuous to map discrete
+    double yaw;
+    SegLoc.x = continuous_to_discrete(poses[0].pose.position.x - origin_x, resolution);
+    SegLoc.y = continuous_to_discrete(poses[0].pose.position.y - origin_y, resolution);
+    SegLoc.z = continuous_to_discrete(poses[0].pose.position.z - origin_z, resolution);
+    quaternion_to_yaw(poses[0].pose.orientation, yaw);
+    SegLoc.theta = continuous_angle_to_discrete(yaw, angle_resolution);
 
-	HexaLoc.x = continuous_to_discrete(poses[1].pose.position.x - origin_x, resolution);
-	HexaLoc.y = continuous_to_discrete(poses[1].pose.position.y - origin_y, resolution);
-	HexaLoc.z = continuous_to_discrete(poses[1].pose.position.z - origin_z, resolution);
-	quaternion_to_yaw(poses[1].pose.orientation, yaw);
-	HexaLoc.theta = continuous_angle_to_discrete(yaw, angle_resolution);
+    HexaLoc.x = continuous_to_discrete(poses[1].pose.position.x - origin_x, resolution);
+    HexaLoc.y = continuous_to_discrete(poses[1].pose.position.y - origin_y, resolution);
+    HexaLoc.z = continuous_to_discrete(poses[1].pose.position.z - origin_z, resolution);
+    quaternion_to_yaw(poses[1].pose.orientation, yaw);
+    HexaLoc.theta = continuous_angle_to_discrete(yaw, angle_resolution);
 
-	bool hexa_bound_check = true;
-	bool segbot_bound_check = true;
+    bool hexa_bound_check = true;
+    bool segbot_bound_check = true;
 
-	//bounds check both robot locationss
-	if (!bounds_check(SegLoc))
-	{
-		segbot_bound_check = false;
-		ROS_ERROR("ERROR: segbot location at discrete location %d %d %d outside of mapbounds %u %u %u", SegLoc.x, SegLoc.y, SegLoc.z, size_x, size_y,
-				size_y);
-	}
-	if (!bounds_check(HexaLoc))
-	{
-		hexa_bound_check = false;
-		ROS_ERROR("ERROR: hexa location at discrete location %d %d %d outside of mapbounds %u %u %u", HexaLoc.x, HexaLoc.y, HexaLoc.z, size_x, size_y,
-				size_y);
-	}
+    //bounds check both robot locationss
+    if (!bounds_check(SegLoc)) {
+        segbot_bound_check = false;
+        ROS_ERROR("ERROR: segbot location at discrete location %d %d %d outside of mapbounds %u %u %u", SegLoc.x, SegLoc.y, SegLoc.z, size_x, size_y, size_y);
+    }
+    if (!bounds_check(HexaLoc)) {
+        hexa_bound_check = false;
+        ROS_ERROR("ERROR: hexa location at discrete location %d %d %d outside of mapbounds %u %u %u", HexaLoc.x, HexaLoc.y, HexaLoc.z, size_x, size_y, size_y);
+    }
 
-	// don't update locations if one is outside map bounds
-	if (!(hexa_bound_check && segbot_bound_check))
-	{
-		return;
-	}
+    // don't update locations if one is outside map bounds
+    if (!(hexa_bound_check && segbot_bound_check)) {
+        return;
+    }
 
-	std::unique_lock < std::mutex > data_lock(data_mutex_);
-	CurrentLocations_.clear();
-	CurrentLocations_.push_back(SegLoc);
-	CurrentLocations_.push_back(HexaLoc);
-	data_lock.unlock();
-	got_first_pose_update = true;
+    std::unique_lock<std::mutex> data_lock(data_mutex_);
+    CurrentLocations_.clear();
+    CurrentLocations_.push_back(SegLoc);
+    CurrentLocations_.push_back(HexaLoc);
+    data_lock.unlock();
+    got_first_pose_update = true;
 }
 
 void EP_wrapper::MapCallback(const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& msg)
 {
-	ROS_INFO("map upate callback for seq %d", (int ) msg->header.seq);
-	std::unique_lock < std::mutex > data_lock(data_mutex_);
-	//TODO: this is inefficient
-	MapElement_c pt;
-	for (size_t pidx = 0; pidx < msg->points.size(); pidx++)
-	{
-		//convert coordinates to discrete in map frame
-		pt.x = continuous_to_discrete(msg->points[pidx].x - origin_x, resolution);
-		pt.y = continuous_to_discrete(msg->points[pidx].y - origin_y, resolution);
-		pt.z = continuous_to_discrete(msg->points[pidx].z - origin_z, resolution);
-		pt.data = msg->points[pidx].intensity;
+    ROS_INFO("map upate callback for seq %d", (int ) msg->header.seq);
+    std::unique_lock<std::mutex> data_lock(data_mutex_);
+    //TODO: this is inefficient
+    MapElement_c pt;
+    for (size_t pidx = 0; pidx < msg->points.size(); pidx++) {
+        //convert coordinates to discrete in map frame
+        pt.x = continuous_to_discrete(msg->points[pidx].x - origin_x,
+                resolution);
+        pt.y = continuous_to_discrete(msg->points[pidx].y - origin_y,
+                resolution);
+        pt.z = continuous_to_discrete(msg->points[pidx].z - origin_z,
+                resolution);
+        pt.data = msg->points[pidx].intensity;
 
-		//dont add points outside of map bounds
-		if (!bounds_check(pt))
-		{
-			continue;
-		}
+        //dont add points outside of map bounds
+        if (!bounds_check(pt)) {
+            continue;
+        }
 
-		MapPts_.push_back(pt);
-	}
-	data_lock.unlock();
-	ROS_INFO("map upate callback finished");
-	got_first_map_update = true;
+        MapPts_.push_back(pt);
+    }
+    data_lock.unlock();
+    ROS_INFO("map upate callback finished");
+    got_first_map_update = true;
 }
 
 bool EP_wrapper::init(void)
@@ -241,101 +234,100 @@ EP_wrapper::~EP_wrapper()
 template<typename T>
 bool EP_wrapper::bounds_check(const T& point)
 {
-	if ((int) point.x < 0 || (int) point.x >= size_x || (int) point.y < 0 || (int) point.y >= size_y || (int) point.z < 0 || (int) point.z >= size_z)
-	{
-		return false;
-	}
-	return true;
+    if ((int) point.x < 0 || (int) point.x >= size_x ||
+        (int) point.y < 0 || (int) point.y >= size_y ||
+        (int) point.z < 0 || (int) point.z >= size_z)
+    {
+        return false;
+    }
+    return true;
 }
 
 int main(int argc, char** argv)
 {
-	ROS_ERROR("start\n");
-	ros::init(argc, argv, "Exploration");
-	ROS_ERROR("ros init done\n");
-	EP_wrapper EPW;
-	ROS_ERROR("made EP wrapper");
+    ROS_ERROR("start\n");
+    ros::init(argc, argv, "Exploration");
+    ROS_ERROR("ros init done\n");
+    EP_wrapper EPW;
+    ROS_ERROR("made EP wrapper");
 
-	while (ros::ok())
-	{
-		ros::spin();
-	}
+    while (ros::ok()) {
+        ros::spin();
+    }
 }
 
 int EP_wrapper::continuous_to_discrete(double cont, double res)
 {
-	double v = cont / res;
-	v >= 0 ? v = floor(v) : v = ceil(v - 1);
-	int d = static_cast<int>(v);
-	return d;
+    double v = cont / res;
+    v >= 0 ? v = floor(v) : v = ceil(v - 1);
+    int d = static_cast<int>(v);
+    return d;
 }
 
 double EP_wrapper::discrete_to_continuous(int disc, double res)
 {
-	double s = (static_cast<double>(disc) * res) + (res / 2.0);
-	return s;
+    double s = (static_cast<double>(disc) * res) + (res / 2.0);
+    return s;
 }
 
 void EP_wrapper::publish_goal_list(const std::vector<Locations_c>& goals)
 {
-	nav_msgs::Path goal_list;
-	goal_list.header.frame_id = frame_id;
-	goal_list.header.stamp = ros::Time::now();
-	goal_list.poses.resize(2);
+    nav_msgs::Path goal_list;
+    goal_list.header.frame_id = frame_id;
+    goal_list.header.stamp = ros::Time::now();
+    goal_list.poses.resize(2);
 
-	//convert goals to world frame, continuous
-	goal_list.poses[0].pose.position.x = discrete_to_continuous(goals[0].x, resolution) + origin_x;
-	goal_list.poses[0].pose.position.y = discrete_to_continuous(goals[0].y, resolution) + origin_y;
-	goal_list.poses[0].pose.position.z = discrete_to_continuous(goals[0].z, resolution) + origin_z;
-	yaw_to_quaternion(discrete_anngle_to_continuous(goals[0].theta, angle_resolution), goal_list.poses[0].pose.orientation);
+    //convert goals to world frame, continuous
+    goal_list.poses[0].pose.position.x = discrete_to_continuous(goals[0].x, resolution) + origin_x;
+    goal_list.poses[0].pose.position.y = discrete_to_continuous(goals[0].y, resolution) + origin_y;
+    goal_list.poses[0].pose.position.z = discrete_to_continuous(goals[0].z, resolution) + origin_z;
+    yaw_to_quaternion(discrete_anngle_to_continuous(goals[0].theta, angle_resolution), goal_list.poses[0].pose.orientation);
 
-	goal_list.poses[1].pose.position.x = discrete_to_continuous(goals[1].x, resolution) + origin_x;
-	goal_list.poses[1].pose.position.y = discrete_to_continuous(goals[1].y, resolution) + origin_y;
-	goal_list.poses[1].pose.position.z = discrete_to_continuous(goals[1].z, resolution) + origin_z;
-	yaw_to_quaternion(discrete_anngle_to_continuous(goals[1].theta, angle_resolution), goal_list.poses[1].pose.orientation);
+    goal_list.poses[1].pose.position.x = discrete_to_continuous(goals[1].x, resolution) + origin_x;
+    goal_list.poses[1].pose.position.y = discrete_to_continuous(goals[1].y, resolution) + origin_y;
+    goal_list.poses[1].pose.position.z = discrete_to_continuous(goals[1].z, resolution) + origin_z;
+    yaw_to_quaternion(discrete_anngle_to_continuous(goals[1].theta, angle_resolution), goal_list.poses[1].pose.orientation);
 
-	//publish goals as path
-	Goal_pub_.publish(goal_list);
+    //publish goals as path
+    Goal_pub_.publish(goal_list);
 
-	//convert to list of points and publish point cloud
-	std::vector<pcl::PointXYZI> points;
-	for (auto & pose : goal_list.poses)
-	{
-		pcl::PointXYZI p;
-		p.x = pose.pose.position.x;
-		p.y = pose.pose.position.y;
-		p.z = pose.pose.position.z;
-		points.push_back(p);
-	}
-	publish_point_cloud(points, Goal_point_cloud_pub);
+    //convert to list of points and publish point cloud
+    std::vector<pcl::PointXYZI> points;
+    for (auto & pose : goal_list.poses) {
+        pcl::PointXYZI p;
+        p.x = pose.pose.position.x;
+        p.y = pose.pose.position.y;
+        p.z = pose.pose.position.z;
+        points.push_back(p);
+    }
+    publish_point_cloud(points, Goal_point_cloud_pub);
 }
 
 void EP_wrapper::quaternion_to_yaw(const geometry_msgs::Quaternion& quat, double& yaw)
 {
-	tf::Quaternion tf_quat;
-	tf::quaternionMsgToTF(quat, tf_quat);
-	yaw = tf::getYaw(tf_quat);
+    tf::Quaternion tf_quat;
+    tf::quaternionMsgToTF(quat, tf_quat);
+    yaw = tf::getYaw(tf_quat);
 }
 
 void EP_wrapper::yaw_to_quaternion(const double& yaw, geometry_msgs::Quaternion& quat)
 {
-	const geometry_msgs::Quaternion q;
-	tf::Quaternion tf_quat = tf::createQuaternionFromRPY(0, 0, yaw);
-	tf::quaternionTFToMsg(tf_quat, quat);
+    const geometry_msgs::Quaternion q;
+    tf::Quaternion tf_quat = tf::createQuaternionFromRPY(0, 0, yaw);
+    tf::quaternionTFToMsg(tf_quat, quat);
 }
 
 int EP_wrapper::continuous_angle_to_discrete(double cont, double res)
 {
-	double pi = M_PI;
+    double pi = M_PI;
 
- 	//set between 2pi and 0
-	if (cont < 0)
-	{
-		cont = 2*pi + cont;
-	}
-	double scaled = cont / res;
-	int d = static_cast<int>(round(scaled));
-        return d;
+    //set between 2pi and 0
+    if (cont < 0) {
+        cont = 2 * pi + cont;
+    }
+    double scaled = cont / res;
+    int d = static_cast<int>(round(scaled));
+    return d;
 }
 
 int EP_wrapper::discrete_anngle_to_continuous(int disc, double res)
@@ -437,17 +429,15 @@ void EP_wrapper::get_point_cloud_from_inner_dim(
 template<typename T>
 inline void EP_wrapper::get_point_cloud_from_points(const std::vector<T>& point_list, std::vector<pcl::PointXYZI>& points)
 {
-	//convert to 3d points
-	for (auto & lp : point_list)
-	{
-		pcl::PointXYZI p;
-		p.x = discrete_to_continuous(lp.x, resolution) + origin_x;
-		p.y = discrete_to_continuous(lp.y, resolution) + origin_y;
-		p.z = discrete_to_continuous(lp.z, resolution) + origin_z;
-		p.intensity = lp.cost;
-		points.push_back(p);
-	}
-
+    //convert to 3d points
+    for (auto & lp : point_list) {
+        pcl::PointXYZI p;
+        p.x = discrete_to_continuous(lp.x, resolution) + origin_x;
+        p.y = discrete_to_continuous(lp.y, resolution) + origin_y;
+        p.z = discrete_to_continuous(lp.z, resolution) + origin_z;
+        p.intensity = lp.cost;
+        points.push_back(p);
+    }
 }
 
 bool EP_wrapper::create_robot_from_config(XmlRpc::XmlRpcValue& params, double scale, Robot_c& robot)
