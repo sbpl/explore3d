@@ -39,7 +39,7 @@ void EP_wrapper::plannerthread(void)
 
 		publish_goal_list(goals);
 
-		publish_planner_map();
+		publish_planner_maps();
 
 		//clear the map points
 		MapPts_.clear();
@@ -206,10 +206,18 @@ bool EP_wrapper::init(void)
     Map_sub_ = nh.subscribe(map_topic_, 20, &EP_wrapper::MapCallback, this);
     Goal_pub_ = nh.advertise<nav_msgs::Path>(goal_topic_, 1);
     Goal_point_cloud_pub = nh.advertise<pcl::PointCloud<pcl::PointXYZI>>(goal_point_cloud_topic, 1);
+
     coverage_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("coverage_map", 1);
-    cost_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("cost_map",1);
     frontier_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("frontier_map", 1);
-    counts_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("counts_map", 1);
+
+    cost_map_pub.reserve(params.robots.size());
+    counts_map_pub.reserve(params.robots.size());
+    for (const Robot_c& robot : params.robots) {
+        ros::Publisher robot_costmap_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI>>(robot.name + "_cost_map", 1);
+        ros::Publisher robot_counts_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI>>(robot.name + "_counts_map", 1);
+        cost_map_pub.push_back(robot_costmap_pub);
+        counts_map_pub.push_back(robot_counts_map_pub);
+    }
 
     return true;
 }
@@ -332,97 +340,98 @@ int EP_wrapper::continuous_angle_to_discrete(double cont, double res)
 
 int EP_wrapper::discrete_anngle_to_continuous(int disc, double res)
 {
-	double scaled = static_cast<double>(disc);
-	return scaled * res;
+    double scaled = static_cast<double>(disc);
+    return scaled * res;
 }
 
 void EP_wrapper::publish_point_cloud(const std::vector<pcl::PointXYZI>& points, const ros::Publisher& publisher)
 {
-	//make point cloud for goals
-	pcl::PointCloud<pcl::PointXYZI> cloud;
-	cloud.header.stamp = ros::Time::now().toNSec();
-	cloud.header.frame_id = frame_id;
-	cloud.height = 1;
+    //make point cloud for goals
+    pcl::PointCloud<pcl::PointXYZI> cloud;
+    cloud.header.stamp = ros::Time::now().toNSec();
+    cloud.header.frame_id = frame_id;
+    cloud.height = 1;
 
-	cloud.points.reserve(points.size());
-	for (auto & p : points)
-	{
-		cloud.points.push_back(p);
-	}
-	cloud.width = cloud.points.size();
-	publisher.publish(cloud);
+    cloud.points.reserve(points.size());
+    for (auto & p : points) {
+        cloud.points.push_back(p);
+    }
+    cloud.width = cloud.points.size();
+    publisher.publish(cloud);
 }
 
-void EP_wrapper::publish_planner_map()
+void EP_wrapper::publish_planner_maps()
 {
+    ROS_INFO("publishing maps....");
+    std::vector<pcl::PointXYZI> coverage_points;
+    get_point_cloud_from_map(EP.coverage_.map_, coverage_points);
+    publish_point_cloud(coverage_points, coverage_map_pub);
 
-	ROS_INFO("publishing maps....");
-	std::vector<pcl::PointXYZI> coverage_points;
-	get_point_cloud_from_map(EP.coverage_.map_, coverage_points);
-	publish_point_cloud(coverage_points, coverage_map_pub);
+    std::vector<pcl::PointXYZI> frontier_points;
+    get_point_cloud_from_points(EP.Frontier3d_, frontier_points);
+    publish_point_cloud(frontier_points, frontier_map_pub);
 
-	std::vector<pcl::PointXYZI> cost_points;
-	get_point_cloud_from_map(EP.CostToPts_.at(0), cost_points);
-	publish_point_cloud(cost_points, cost_map_pub);
+    for (std::size_t i = 0; i < params.robots.size(); ++i) {
+        std::vector<pcl::PointXYZI> cost_points;
+        get_point_cloud_from_map(EP.CostToPts_.at(i), cost_points);
+        publish_point_cloud(cost_points, cost_map_pub.at(i));
 
-	std::vector<pcl::PointXYZI> frontier_points;
-	get_point_cloud_from_points(EP.Frontier3d_, frontier_points);
-	publish_point_cloud(frontier_points, frontier_map_pub);
+        std::vector<pcl::PointXYZI> count_points;
+        get_point_cloud_from_map(EP.counts_.at(i), count_points);
+        publish_point_cloud(count_points, counts_map_pub.at(i));
+    }
 
-	std::vector<pcl::PointXYZI> count_points;
-	get_point_cloud_from_map(EP.counts_.at(0), count_points);
-	publish_point_cloud(count_points, counts_map_pub);
-	ROS_INFO("done\n");
+    ROS_INFO("done");
 }
 
 template<typename T>
 void EP_wrapper::get_point_cloud_from_map(const std::vector<T> &map, std::vector<pcl::PointXYZI> & points)
 {
-	std::vector<int> indicies;
-	get_point_cloud_from_inner_dim(map, points, indicies, 0);
+    std::vector<int> indicies;
+    get_point_cloud_from_inner_dim(map, points, indicies, 0);
 }
 
 template<typename T>
-void EP_wrapper::get_point_cloud_from_inner_dim(const std::vector<T>& map, std::vector<pcl::PointXYZI>& points, std::vector<int> & indicies,
-		int depth)
+void EP_wrapper::get_point_cloud_from_inner_dim(
+    const std::vector<T>& map,
+    std::vector<pcl::PointXYZI>& points, std::vector<int> & indicies,
+    int depth)
 {
-	size_t dim_size = map.size();
-	for (size_t s = 0; s < dim_size; s++)
-	{
-		if (indicies.size() < (size_t) depth + 1)
-		{
-			indicies.push_back(0);
-		}
-		indicies[depth] = s;
-		get_point_cloud_from_inner_dim(map.at(s), points, indicies, depth + 1);
-	}
+    size_t dim_size = map.size();
+    for (size_t s = 0; s < dim_size; s++) {
+        if (indicies.size() < (size_t) depth + 1) {
+            indicies.push_back(0);
+        }
+        indicies[depth] = s;
+        get_point_cloud_from_inner_dim(map.at(s), points, indicies, depth + 1);
+    }
 }
 
 template<typename T>
-void EP_wrapper::get_point_cloud_from_inner_dim(const T& val, std::vector<pcl::PointXYZI>& points, std::vector<int> & indicies, int depth)
+void EP_wrapper::get_point_cloud_from_inner_dim(
+    const T& val,
+    std::vector<pcl::PointXYZI>& points,
+    std::vector<int> & indicies,
+    int depth)
 {
-	static int count = 0;
-	count++;
-	pcl::PointXYZI point;
-	if (depth > 0)
-	{
-		point.x = discrete_to_continuous(indicies[0], resolution) + origin_x;
-	}
+    static int count = 0;
+    count++;
+    pcl::PointXYZI point;
+    if (depth > 0) {
+        point.x = discrete_to_continuous(indicies[0], resolution) + origin_x;
+    }
 
-	if (depth > 1)
-	{
-		point.y = discrete_to_continuous(indicies[1], resolution) + origin_y;
-	}
+    if (depth > 1) {
+        point.y = discrete_to_continuous(indicies[1], resolution) + origin_y;
+    }
 
-	if (depth > 2)
-	{
-		point.z = discrete_to_continuous(indicies[2], resolution) + origin_z;
-	}
-	point.intensity = static_cast<double>(val);
-	if (point.intensity > 0)
-	{
-		points.push_back(point);
-	}
+    if (depth > 2) {
+        point.z = discrete_to_continuous(indicies[2], resolution) + origin_z;
+    }
+    point.intensity = static_cast<double>(val);
+    if (point.intensity > 0) {
+        points.push_back(point);
+    }
 }
 
 template<typename T>
