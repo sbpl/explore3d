@@ -39,6 +39,8 @@ void EP_wrapper::plannerthread(void)
 
 		publish_goal_list(goals);
 
+		publish_planner_map();
+
 		//clear the map points
 		MapPts_.clear();
 
@@ -204,11 +206,17 @@ void EP_wrapper::init(void)
 	EP_thread_ = new std::thread(&EP_wrapper::plannerthread, this);
 
 	ROS_ERROR("subscribed to %s and %s \n", pose_topic_.c_str(), map_topic_.c_str());
+	ROS_ERROR("dims is %d %d %d\n", size_x, size_y, size_z);
+	ROS_ERROR("resolution is %f\n", resolution);
 
 	Pose_sub_ = nh.subscribe(pose_topic_, 1, &EP_wrapper::PoseCallback, this);
 	Map_sub_ = nh.subscribe(map_topic_, 20, &EP_wrapper::MapCallback, this);
 	Goal_pub_ = nh.advertise<nav_msgs::Path>(goal_topic_, 1);
 	Goal_point_cloud_pub = nh.advertise<pcl::PointCloud<pcl::PointXYZI>>(goal_point_cloud_topic, 1);
+	coverage_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("coverage_map", 1);
+	cost_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("cost_map", 1);
+	frontier_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("frontier_map", 1);
+	counts_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("counts_map", 1);
 }
 
 EP_wrapper::EP_wrapper() :
@@ -254,7 +262,7 @@ int EP_wrapper::continuous_to_discrete(double cont, double res)
 	return d;
 }
 
-double EP_wrapper::disrete_to_continuous(int disc, double res)
+double EP_wrapper::discrete_to_continuous(int disc, double res)
 {
 	double s = (static_cast<double>(disc) * res) + (res / 2.0);
 	return s;
@@ -268,14 +276,14 @@ void EP_wrapper::publish_goal_list(const std::vector<Locations_c>& goals)
 	goal_list.poses.resize(2);
 
 	//convert goals to world frame, continuous
-	goal_list.poses[0].pose.position.x = disrete_to_continuous(goals[0].x, resolution) + origin_x;
-	goal_list.poses[0].pose.position.y = disrete_to_continuous(goals[0].y, resolution) + origin_y;
-	goal_list.poses[0].pose.position.z = disrete_to_continuous(goals[0].z, resolution) + origin_z;
+	goal_list.poses[0].pose.position.x = discrete_to_continuous(goals[0].x, resolution) + origin_x;
+	goal_list.poses[0].pose.position.y = discrete_to_continuous(goals[0].y, resolution) + origin_y;
+	goal_list.poses[0].pose.position.z = discrete_to_continuous(goals[0].z, resolution) + origin_z;
 	yaw_to_quaternion(discrete_anngle_to_continuous(goals[0].theta, angle_resolution), goal_list.poses[0].pose.orientation);
 
-	goal_list.poses[1].pose.position.x = disrete_to_continuous(goals[1].x, resolution) + origin_x;
-	goal_list.poses[1].pose.position.y = disrete_to_continuous(goals[1].y, resolution) + origin_y;
-	goal_list.poses[1].pose.position.z = disrete_to_continuous(goals[1].z, resolution) + origin_z;
+	goal_list.poses[1].pose.position.x = discrete_to_continuous(goals[1].x, resolution) + origin_x;
+	goal_list.poses[1].pose.position.y = discrete_to_continuous(goals[1].y, resolution) + origin_y;
+	goal_list.poses[1].pose.position.z = discrete_to_continuous(goals[1].z, resolution) + origin_z;
 	yaw_to_quaternion(discrete_anngle_to_continuous(goals[1].theta, angle_resolution), goal_list.poses[1].pose.orientation);
 
 	//publish goals as path
@@ -311,14 +319,15 @@ void EP_wrapper::yaw_to_quaternion(const double& yaw, geometry_msgs::Quaternion&
 int EP_wrapper::continuous_angle_to_discrete(double cont, double res)
 {
 	double pi = M_PI;
-	//set between 2pi and 0
-	if (cont < pi)
+
+ 	//set between 2pi and 0
+	if (cont < 0)
 	{
-		cont = 2*pi - cont;
+		cont = 2*pi + cont;
 	}
 	double scaled = cont / res;
 	int d = static_cast<int>(round(scaled));
-	return d;
+        return d;
 }
 
 int EP_wrapper::discrete_anngle_to_continuous(int disc, double res)
@@ -342,4 +351,92 @@ void EP_wrapper::publish_point_cloud(const std::vector<pcl::PointXYZI>& points, 
 	}
 	cloud.width = cloud.points.size();
 	publisher.publish(cloud);
+}
+
+void EP_wrapper::publish_planner_map()
+{
+
+	ROS_INFO("publishing maps....");
+	std::vector<pcl::PointXYZI> coverage_points;
+	get_point_cloud_from_map(EP.coverage_.map_, coverage_points);
+	publish_point_cloud(coverage_points, coverage_map_pub);
+
+	std::vector<pcl::PointXYZI> cost_points;
+	get_point_cloud_from_map(EP.CostToPts_.at(0), cost_points);
+	publish_point_cloud(cost_points, cost_map_pub);
+
+	std::vector<pcl::PointXYZI> frontier_points;
+	get_point_cloud_from_points(EP.Frontier3d_, frontier_points);
+	publish_point_cloud(frontier_points, frontier_map_pub);
+
+	std::vector<pcl::PointXYZI> count_points;
+	get_point_cloud_from_map(EP.counts_.at(0), count_points);
+	publish_point_cloud(count_points, counts_map_pub);
+	ROS_INFO("done\n");
+}
+
+template<typename T>
+void EP_wrapper::get_point_cloud_from_map(const std::vector<T> &map, std::vector<pcl::PointXYZI> & points)
+{
+	std::vector<int> indicies;
+	get_point_cloud_from_inner_dim(map, points, indicies, 0);
+}
+
+template<typename T>
+void EP_wrapper::get_point_cloud_from_inner_dim(const std::vector<T>& map, std::vector<pcl::PointXYZI>& points, std::vector<int> & indicies,
+		int depth)
+{
+	size_t dim_size = map.size();
+	for (size_t s = 0; s < dim_size; s++)
+	{
+		if (indicies.size() < (size_t) depth + 1)
+		{
+			indicies.push_back(0);
+		}
+		indicies[depth] = s;
+		get_point_cloud_from_inner_dim(map.at(s), points, indicies, depth + 1);
+	}
+}
+
+template<typename T>
+void EP_wrapper::get_point_cloud_from_inner_dim(const T& val, std::vector<pcl::PointXYZI>& points, std::vector<int> & indicies, int depth)
+{
+	static int count = 0;
+	count++;
+	pcl::PointXYZI point;
+	if (depth > 0)
+	{
+		point.x = discrete_to_continuous(indicies[0], resolution) + origin_x;
+	}
+
+	if (depth > 1)
+	{
+		point.y = discrete_to_continuous(indicies[1], resolution) + origin_y;
+	}
+
+	if (depth > 2)
+	{
+		point.z = discrete_to_continuous(indicies[2], resolution) + origin_z;
+	}
+	point.intensity = static_cast<double>(val);
+	if (point.intensity > 0)
+	{
+		points.push_back(point);
+	}
+}
+
+template<typename T>
+inline void EP_wrapper::get_point_cloud_from_points(const std::vector<T>& point_list, std::vector<pcl::PointXYZI>& points)
+{
+	//convert to 3d points
+	for (auto & lp : point_list)
+	{
+		pcl::PointXYZI p;
+		p.x = discrete_to_continuous(lp.x, resolution) + origin_x;
+		p.y = discrete_to_continuous(lp.y, resolution) + origin_y;
+		p.z = discrete_to_continuous(lp.z, resolution) + origin_z;
+		p.intensity = lp.cost;
+		points.push_back(p);
+	}
+
 }
