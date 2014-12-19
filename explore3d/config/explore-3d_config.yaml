@@ -22,18 +22,23 @@ pose_topic: /robot_poses
 #numangles:
 #mindist: 
 
-#planner params
-#segbot/motionheight: 
-#segbot/sensorheight:
-#segbot/horizontalfov:
-#segbot/verticalfov:
-#segbot/detectionrange:
-#segbot/circularsize:
-#segbot/name:
-#hexa/motionheight:
-#hexa/sensorheight:
-#hexa/horizontalfov:
-#hexa/verticalfov:
-#hexa/detectionrange:
-#hexa/circularsize:
-#hexa/name:
+robot_params: [
+    {
+        name: "segbot",
+        motionheight: 0.0,
+        sensorheight: 0.5,
+        horizontalfov_degs: 22.5,
+        verticalfov_degs: 18.0,
+        detectionrange: 5.0,
+        circularsize: 1.0
+    },
+    {
+        name: "hexa",
+        motionheight: 1.2,
+        sensorheight: 1.2,
+        horizontalfov_degs: 22.5,
+        verticalfov_degs: 18.0,
+        detectionrange: 5.0,
+        circularsize: 1.0
+    }
+]

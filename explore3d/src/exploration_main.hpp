@@ -17,7 +17,7 @@ class EP_wrapper
 public:
 	EP_wrapper();
 	void plannerthread(void);
-	void init(void);
+	bool init(void);
 	void PoseCallback(const nav_msgs::PathConstPtr& msg);
 	void MapCallback(const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& msg);
 	~EP_wrapper();
@@ -60,6 +60,9 @@ private:
 
 	void publish_planner_map();
 
+    bool create_robot_from_config(XmlRpc::XmlRpcValue& params, double scale, Robot_c& robot);
+    void log_robots(const std::vector<Robot_c>& robots);
+
 	double scale;
 	double planner_rate;
 	double origin_x;
@@ -83,6 +86,5 @@ private:
 	std::string goal_topic_, map_topic_, pose_topic_, goal_point_cloud_topic;
 	ros::NodeHandle nh;
 	ros::NodeHandle ph;
-
 };
 

@@ -130,99 +130,99 @@ void EP_wrapper::MapCallback(const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& ms
 	got_first_map_update = true;
 }
 
-void EP_wrapper::init(void)
+bool EP_wrapper::init(void)
 {
-	Robot_c Segbot, Hexa;
+    ph.param("planner_rate", planner_rate, 0.5);
+    ph.param("scale", scale, 20.0);
 
-	got_first_map_update = false;
-	got_first_pose_update = false;
+    XmlRpc::XmlRpcValue robot_params;
+    ph.getParam("robot_params", robot_params);
+    if (robot_params.getType() != XmlRpc::XmlRpcValue::TypeArray) {
+        return false;
+    }
 
-//  while(!ros::param::has("scale")) {ros::Duration(0.1).sleep();}
-	ph.param<double>("planner_rate", planner_rate, 0.5);
-	ph.param<double>("scale", scale, 20);
+    ROS_INFO("Reading in %d robots from config", robot_params.size());
 
-	int segbot_motionheight, segbot_sensorheight, segbot_detectionrange, segbot_circularsize, hexa_motionheight, hexa_sensorheight,
-			hexa_detectionrange, hexa_circularsize;
-	ph.param<int>("segbot/motionheight", segbot_motionheight, (int) (0.0 * scale)); // height to use for obstacles during motionheight (cells)
-	Segbot.MotionHeight_ = (uint) segbot_motionheight;
-	ph.param<int>("segbot/sensorheight", segbot_sensorheight, (int) 0.5 * scale); // height sensor is at (cells)
-	Segbot.SensorHeight_ = (uint) segbot_sensorheight;
-	ph.param<double>("segbot/horizontalfov", Segbot.HorizontalFOV_, M_PI / 8);
-	ph.param<double>("segbot/verticalfov", Segbot.VerticalFOV_, M_PI / 10);
-	ph.param<int>("segbot/detectionrange", segbot_detectionrange, (int) 5.0 * scale); // how far the sensor works (cells)
-	Segbot.DetectionRange_ = (uint) segbot_detectionrange;
-	ph.param<int>("segbot/circularsize", segbot_circularsize, (uint) 1.0 * scale); // how big the robot is (cells)
-	Segbot.CircularSize_ = (uint) segbot_circularsize;
-	ph.param<std::string>("segbot/name", Segbot.name, "Segbot");
-	ph.param<int>("hexa/motionheight", hexa_motionheight, (int) 1.2 * scale);
-	Hexa.MotionHeight_ = (uint) hexa_motionheight;
-	ph.param<int>("hexa/sensorheight", hexa_sensorheight, (int) 1.2 * scale);
-	Hexa.SensorHeight_ = hexa_sensorheight;
-	ph.param<double>("hexa/horizontalfov", Hexa.HorizontalFOV_, M_PI / 8);
-	ph.param<double>("hexa/verticalfov", Hexa.VerticalFOV_, M_PI / 10);
-	ph.param<int>("hexa/detectionrange", hexa_detectionrange, (int) 5.0 * scale);
-	Hexa.DetectionRange_ = hexa_detectionrange;
-	ph.param<int>("hexa/circularsize", hexa_circularsize, (int) 1.0 * scale);
-	Hexa.CircularSize_ = hexa_circularsize;
-	ph.param<std::string>("hexa/name", Hexa.name, "Hexa");
+    std::vector<Robot_c> robots;
+    for (int i = 0; i < robot_params.size(); ++i) {
+        XmlRpc::XmlRpcValue& params = robot_params[i];
+        if (params.getType() != XmlRpc::XmlRpcValue::TypeStruct) {
+            return false;
+        }
+        Robot_c robot;
+        if (!this->create_robot_from_config(params, scale, robot)) {
+            return false;
+        }
+        robots.push_back(robot);
+    }
+    params.robots = robots;
 
-	params.robots.push_back(Segbot);
-	params.robots.push_back(Hexa);
+    this->log_robots(params.robots);
 
-	int objectmaxelev, obs, freespace, unk, numangles, mindist;
-	ph.param<std::string>("frame_id", frame_id, "/map");
-	ph.param<int>("size_x", size_x, 500);
-	params.size_x = size_x;
-	ph.param<int>("size_y", size_y, 500);
-	params.size_y = size_y;
-	ph.param<int>("size_z", size_z, 50);
-	params.size_z = size_z;
-	ph.param<double>("origin_x", origin_x, 0);
-	ph.param<double>("origin_y", origin_y, 0);
-	ph.param<double>("origin_z", origin_z, 0);
-	ph.param<double>("resolution", resolution, 0.5);
+    got_first_map_update = false;
+    got_first_pose_update = false;
 
-	ph.param<int>("objectmaxelev", objectmaxelev, (uint) 1.5 * scale); // max height to consider for the OOI (cells)
-	params.ObjectMaxElev = objectmaxelev;
-	ph.param<int>("obsvalue", obs, 100); // values for obstacles, freespace, unknown
-	params.obs = obs;
-	ph.param<int>("freevalue", freespace, 50);
-	params.freespace = freespace;
-	ph.param<int>("unkvalue", unk, 0);
-	params.unk = unk;
-	ph.param<int>("numangles", numangles, 16); // number of thetas
-	params.NumAngles = numangles;
-	ph.param<int>("mindist", mindist, (uint) 1.2 * scale); // closest robots should operate without penalty (cells)
-	params.MinDist = mindist;
+    int objectmaxelev, obs, freespace, unk, numangles, mindist;
+    ph.param<std::string>("frame_id", frame_id, "/map");
+    ph.param<int>("size_x", size_x, 500);
+    params.size_x = size_x;
+    ph.param<int>("size_y", size_y, 500);
+    params.size_y = size_y;
+    ph.param<int>("size_z", size_z, 50);
+    params.size_z = size_z;
+    ph.param<double>("origin_x", origin_x, 0);
+    ph.param<double>("origin_y", origin_y, 0);
+    ph.param<double>("origin_z", origin_z, 0);
+    ph.param<double>("resolution", resolution, 0.5);
 
-	angle_resolution = (2 * M_PI) / numangles;
+    ph.param<int>("objectmaxelev", objectmaxelev, (uint) 1.5 * scale); // max height to consider for the OOI (cells)
+    params.ObjectMaxElev = objectmaxelev;
+    ph.param<int>("obsvalue", obs, 100); // values for obstacles, freespace, unknown
+    params.obs = obs;
+    ph.param<int>("freevalue", freespace, 50);
+    params.freespace = freespace;
+    ph.param<int>("unkvalue", unk, 0);
+    params.unk = unk;
+    ph.param<int>("numangles", numangles, 16); // number of thetas
+    params.NumAngles = numangles;
+    ph.param<int>("mindist", mindist, (uint) 1.2 * scale); // closest robots should operate without penalty (cells)
+    params.MinDist = mindist;
 
-	ph.param<std::string>("goal_topic", goal_topic_, "goal_list");
-	ph.param<std::string>("map_topic", map_topic_, "combined_map");
-	ph.param<std::string>("pose_topic", pose_topic_, "combined_pose");
-	ph.param<std::string>("goal_point_cloud_topic", goal_point_cloud_topic, "goal_point_cloud");
+    angle_resolution = (2 * M_PI) / numangles;
 
-	EP.Init(params);
-	EP_thread_ = new std::thread(&EP_wrapper::plannerthread, this);
+    ph.param<std::string>("goal_topic", goal_topic_, "goal_list");
+    ph.param<std::string>("map_topic", map_topic_, "combined_map");
+    ph.param<std::string>("pose_topic", pose_topic_, "combined_pose");
+    ph.param<std::string>("goal_point_cloud_topic", goal_point_cloud_topic, "goal_point_cloud");
 
-	ROS_ERROR("subscribed to %s and %s \n", pose_topic_.c_str(), map_topic_.c_str());
-	ROS_ERROR("dims is %d %d %d\n", size_x, size_y, size_z);
-	ROS_ERROR("resolution is %f\n", resolution);
+    EP.Init(params);
+    EP_thread_ = new std::thread(&EP_wrapper::plannerthread, this);
 
-	Pose_sub_ = nh.subscribe(pose_topic_, 1, &EP_wrapper::PoseCallback, this);
-	Map_sub_ = nh.subscribe(map_topic_, 20, &EP_wrapper::MapCallback, this);
-	Goal_pub_ = nh.advertise<nav_msgs::Path>(goal_topic_, 1);
-	Goal_point_cloud_pub = nh.advertise<pcl::PointCloud<pcl::PointXYZI>>(goal_point_cloud_topic, 1);
-	coverage_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("coverage_map", 1);
-	cost_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("cost_map", 1);
-	frontier_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("frontier_map", 1);
-	counts_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("counts_map", 1);
+    ROS_ERROR("subscribed to %s and %s \n", pose_topic_.c_str(), map_topic_.c_str());
+    ROS_ERROR("dims is %d %d %d\n", size_x, size_y, size_z);
+    ROS_ERROR("resolution is %f\n", resolution);
+
+    Pose_sub_ = nh.subscribe(pose_topic_, 1, &EP_wrapper::PoseCallback, this);
+    Map_sub_ = nh.subscribe(map_topic_, 20, &EP_wrapper::MapCallback, this);
+    Goal_pub_ = nh.advertise<nav_msgs::Path>(goal_topic_, 1);
+    Goal_point_cloud_pub = nh.advertise<pcl::PointCloud<pcl::PointXYZI>>(goal_point_cloud_topic, 1);
+    coverage_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("coverage_map", 1);
+    cost_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("cost_map",1);
+    frontier_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("frontier_map", 1);
+    counts_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("counts_map", 1);
+
+    return true;
 }
 
 EP_wrapper::EP_wrapper() :
 		nh(), ph("~")
 {
-	init();
+	if (!init()) {
+	    ROS_ERROR("Failed to initialize EP wrapper");
+	}
+	else {
+	    ROS_INFO("Successfully initialized EP wrapper");
+	}
 }
 
 EP_wrapper::~EP_wrapper()
@@ -439,4 +439,56 @@ inline void EP_wrapper::get_point_cloud_from_points(const std::vector<T>& point_
 		points.push_back(p);
 	}
 
+}
+
+bool EP_wrapper::create_robot_from_config(XmlRpc::XmlRpcValue& params, double scale, Robot_c& robot)
+{
+    if (!params.hasMember("name")               || params["name"].getType() != XmlRpc::XmlRpcValue::TypeString ||
+        !params.hasMember("motionheight")       || params["motionheight"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+        !params.hasMember("sensorheight")       || params["sensorheight"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+        !params.hasMember("horizontalfov_degs") || params["horizontalfov_degs"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+        !params.hasMember("verticalfov_degs")   || params["verticalfov_degs"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+        !params.hasMember("detectionrange")     || params["detectionrange"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+        !params.hasMember("circularsize")       || params["circularsize"].getType() != XmlRpc::XmlRpcValue::TypeDouble)
+    {
+        ROS_ERROR("Robot config does not support minimum requirements");
+        return false;
+    }
+
+    double robot_motionheight;
+    double robot_sensorheight;
+    double robot_detectionrange;
+    double robot_circularsize;
+
+    robot_motionheight = double(params["motionheight"]);
+    robot_sensorheight = double(params["sensorheight"]);
+    robot_detectionrange = double(params["detectionrange"]);
+    robot_circularsize = double(params["circularsize"]);
+
+    robot.HorizontalFOV_ = double(params["horizontalfov_degs"]);
+    robot.VerticalFOV_ = double(params["verticalfov_degs"]);
+    robot.HorizontalFOV_ *= M_PI / 180.0;
+    robot.VerticalFOV_ *= M_PI / 180.0;
+
+    robot.name = std::string(params["name"]);
+    robot.MotionHeight_     = (uint)robot_motionheight;
+    robot.SensorHeight_     = (uint)robot_sensorheight;
+    robot.DetectionRange_   = (uint)robot_detectionrange;
+    robot.CircularSize_     = (uint)robot_circularsize;
+
+    return true;
+}
+
+void EP_wrapper::log_robots(const std::vector<Robot_c>& robots)
+{
+    ROS_INFO("Robots:");
+    for (const Robot_c& robot : robots) {
+        ROS_INFO("  %s", robot.name.c_str());
+        ROS_INFO("    Vertical FOV: %0.3f", robot.VerticalFOV_);
+        ROS_INFO("    Horizontal FOV: %0.3f", robot.HorizontalFOV_);
+        ROS_INFO("    Circular Size: %u", robot.CircularSize_);
+        ROS_INFO("    Detection Range: %u", robot.DetectionRange_);
+        ROS_INFO("    Motion Height: %u", robot.MotionHeight_);
+        ROS_INFO("    Sensor Height: %u", robot.SensorHeight_);
+    }
 }
