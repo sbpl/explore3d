@@ -380,21 +380,12 @@ void ExplorationPlanner::CreateFrontier(void)
             raycast3d(Frontier3d_[pidx], ridx);
         }
 
-        // 	printf("Coverage for %li\n", ridx);
-        // 	printCosts(99, 99, 150, 150, ridx);
-        //
-        // 	printf("Counts for %li\n", ridx);
-        // 	printCounts(99, 99, 150, 150, ridx);
-
         goal_[ridx].cost = 0;
         goal_[ridx].z = robots_[ridx].MotionHeight_;
         //printf("z is %i\n", goal_[ridx].z);
         for (size_t xidx = 0; xidx < coverage_.x_size_; xidx++) {
             for (size_t yidx = 0; yidx < coverage_.y_size_; yidx++) {
                 for (uint aidx = 0; aidx < NumAngles_; aidx++) {
-                    // 		  if (xidx==150 && yidx==150) {
-                    // 			printf("%li angle:%i cost:%f  counts:%i ratio:%f goal:%f\n", ridx, aidx, CostToPts_[ridx][xidx][yidx], counts_[ridx][xidx][yidx][aidx], counts_[ridx][xidx][yidx][aidx]/CostToPts_[ridx][xidx][yidx], goal_[ridx].cost);
-                    // 		  }
                     if (CostToPts_[ridx](xidx, yidx) != MaxCost &&
                         EvalFxn(xidx, yidx, goal_[ridx].z, aidx, ridx) > goal_[ridx].cost)
                     {

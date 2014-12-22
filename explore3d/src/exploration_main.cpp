@@ -54,7 +54,7 @@ void EP_wrapper::PoseCallback(const nav_msgs::PathConstPtr& msg)
     auto poses = msg->poses;
 
     if (poses.size() < 2) {
-        ROS_ERROR("ERROR poses list provided is size %d when it should be size %d\n", (int)poses.size(), 2);
+        ROS_ERROR("ERROR poses list provided is size %d when it should be size %d", (int)poses.size(), 2);
     }
 
     //Convert poses from world continuous to map discrete
@@ -105,12 +105,9 @@ void EP_wrapper::MapCallback(const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& ms
     MapElement_c pt;
     for (size_t pidx = 0; pidx < msg->points.size(); pidx++) {
         //convert coordinates to discrete in map frame
-        pt.x = continuous_to_discrete(msg->points[pidx].x - origin_x,
-                resolution);
-        pt.y = continuous_to_discrete(msg->points[pidx].y - origin_y,
-                resolution);
-        pt.z = continuous_to_discrete(msg->points[pidx].z - origin_z,
-                resolution);
+        pt.x = continuous_to_discrete(msg->points[pidx].x - origin_x, resolution);
+        pt.y = continuous_to_discrete(msg->points[pidx].y - origin_y, resolution);
+        pt.z = continuous_to_discrete(msg->points[pidx].z - origin_z, resolution);
         pt.data = msg->points[pidx].intensity;
 
         //dont add points outside of map bounds
@@ -193,9 +190,9 @@ bool EP_wrapper::init(void)
     EP.Init(params);
     EP_thread_ = new std::thread(&EP_wrapper::plannerthread, this);
 
-    ROS_ERROR("subscribed to %s and %s \n", pose_topic_.c_str(), map_topic_.c_str());
-    ROS_ERROR("dims is %d %d %d\n", size_x, size_y, size_z);
-    ROS_ERROR("resolution is %f\n", resolution);
+    ROS_ERROR("subscribed to %s and %s", pose_topic_.c_str(), map_topic_.c_str());
+    ROS_ERROR("dims is %d %d %d", size_x, size_y, size_z);
+    ROS_ERROR("resolution is %f", resolution);
 
     Pose_sub_ = nh.subscribe(pose_topic_, 1, &EP_wrapper::PoseCallback, this);
     Map_sub_ = nh.subscribe(map_topic_, 20, &EP_wrapper::MapCallback, this);
@@ -247,9 +244,9 @@ bool EP_wrapper::bounds_check(const T& point)
 
 int main(int argc, char** argv)
 {
-    ROS_ERROR("start\n");
+    ROS_ERROR("start");
     ros::init(argc, argv, "Exploration");
-    ROS_ERROR("ros init done\n");
+    ROS_ERROR("ros init done");
     EP_wrapper EPW;
     ROS_ERROR("made EP wrapper");
 
@@ -462,10 +459,11 @@ void EP_wrapper::get_occupancy_grid_from_costmap(
             }
             else {
                 if (span == 0.0) {
-                    map.data[y * size_x + x] = 0;
+                    map.data[y * size_x + x] = -1;
+//                    map.data[y * size_x + x] = 100;
                 }
                 else {
-                    map.data[y * size_x + x] = (255 * ((cost - min_cost) / span));
+                    map.data[y * size_x + x] = (100 * ((cost - min_cost) / span));
                 }
             }
         }
@@ -477,9 +475,22 @@ void EP_wrapper::get_occupancy_grid_from_countmap(
     const ros::Time& time,
     nav_msgs::OccupancyGrid& map) const
 {
+    // downproject countmap to costmap
+
     ExplorationPlanner::CostMap costmap;
 
-    // downproject countmap to costmap
+    costmap.resize(countmap.size(0), countmap.size(1));
+    costmap.assign(0);
+
+    for (std::size_t x = 0; x < countmap.size(0); ++x) {
+        for (std::size_t y = 0; y < countmap.size(1); ++y) {
+            for (std::size_t a = 0; a < countmap.size(2); ++a) {
+                costmap(x, y) += countmap(x, y, a);
+            }
+        }
+    }
+
+    return this->get_occupancy_grid_from_costmap(costmap, time, map);
 }
 
 template<typename T>
