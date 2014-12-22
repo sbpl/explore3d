@@ -28,7 +28,7 @@
 // if not
 // go to closest
 
-
+#include "Grid.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //  Minor Classes
@@ -40,46 +40,45 @@ bool CoverageMap_c::Init(uint x, uint y, uint z, unsigned char fs, unsigned char
   UNK = unk;
   robotsPtr_ = RobotPtr;
 
-  DistToObs_.resize(robotsPtr_->size() );
-  for (size_t ridx=0; ridx < DistToObs_.size(); ridx++) {
-	DistToObs_[ridx].resize(x);
-	for (uint xidx=0; xidx < x; xidx++) {
-	  DistToObs_[ridx][xidx].resize(y);
-	}
+  for (std::size_t i = 0; i < robotsPtr_->size(); ++i) {
+      DistToObs_[i].resize(x, y);
+      DistToObs_[i].assign(0);
   }
 
-  map_.resize(x);
-  for (uint xidx=0; xidx < x; xidx++) {
-	map_[xidx].resize(y);
-	for (uint yidx=0; yidx< y; yidx++) {
-	  map_[xidx][yidx].resize(z);
-	  for (uint zidx=0; zidx< z; zidx++) {
-		map_[xidx][yidx][zidx] = UNK;
-	  }
-	}
-  }
+  map_.resize(x, y, z);
+  map_.assign(UNK);
+
   return true;
 }
 
-std::vector<SearchPts_c> CoverageMap_c::GetFrontier3d(void) {
-  std::vector<SearchPts_c> fpts;
-  SearchPts_c temp;
+std::vector<SearchPts_c> CoverageMap_c::GetFrontier3d(void)
+{
+    std::vector<SearchPts_c> fpts;
+    SearchPts_c temp;
 
-  for (uint xidx=1; xidx < x_size_-1; xidx++) {
-	for (uint yidx=1; yidx < y_size_-1; yidx++) {
-	  for (uint zidx=0; zidx < z_size_; zidx++) {
-		if (map_[xidx][yidx][zidx] == UNK) {
-		  if ((zidx+1 < z_size_ && map_[xidx][yidx][zidx+1] == FREESPACE) || (zidx>0 && map_[xidx][yidx][zidx-1] == FREESPACE) || map_[xidx][yidx+1][zidx] == FREESPACE || map_[xidx][yidx-1][zidx] == FREESPACE || map_[xidx+1][yidx][zidx] == FREESPACE || map_[xidx-1][yidx][zidx] == FREESPACE) {
-			temp.x = xidx; temp.y = yidx; temp.z = zidx;
-			fpts.push_back(temp);
-			//	printf("(%i %i %i)", xidx, yidx, zidx);
-		  }
-		}
-	  }
-	}
-  }
+    for (uint xidx = 1; xidx < x_size_ - 1; xidx++) {
+        for (uint yidx = 1; yidx < y_size_ - 1; yidx++) {
+            for (uint zidx = 0; zidx < z_size_; zidx++) {
+                if (map_(xidx, yidx, zidx) == UNK) {
+                    if ((zidx + 1 < z_size_ && map_(xidx, yidx, zidx + 1) == FREESPACE) ||
+                         (zidx > 0 && map_(xidx, yidx, zidx - 1) == FREESPACE) ||
+                         map_(xidx, yidx + 1, zidx) == FREESPACE ||
+                         map_(xidx, yidx - 1, zidx) == FREESPACE ||
+                         map_(xidx + 1, yidx, zidx) == FREESPACE ||
+                         map_(xidx - 1, yidx, zidx) == FREESPACE)
+                    {
+                        temp.x = xidx;
+                        temp.y = yidx;
+                        temp.z = zidx;
+                        fpts.push_back(temp);
+                        //	printf("(%i %i %i)", xidx, yidx, zidx);
+                    }
+                }
+            }
+        }
+    }
 
-  return fpts;
+    return fpts;
 }
 
 bool operator< (const SearchPts_c & pt1, const SearchPts_c & pt2)
@@ -110,77 +109,81 @@ bool ptssort(const  pts2d & pt1, const  pts2d & pt2) {
 	return false;
 }
 
-void CoverageMap_c::UpdateDistances(void) {
-  for (size_t ridx=0; ridx < DistToObs_.size(); ridx++) {
-	uint zz = (*robotsPtr_)[ridx].MotionHeight_;
+void CoverageMap_c::UpdateDistances(void)
+{
+    for (size_t ridx = 0; ridx < DistToObs_.size(); ridx++) {
+        uint zz = (*robotsPtr_)[ridx].MotionHeight_;
 
-	for (uint xidx=0; xidx < x_size_; xidx++) {
-	  for (uint yidx=0; yidx < y_size_; yidx++) {
-		if (xidx==0 || yidx==0 || map_[xidx][yidx][zz] == OBS) {
-		  DistToObs_[ridx][xidx][yidx] = 0;
-		} else {
-		  int temp1 = std::min(DistToObs_[ridx][xidx-1][yidx]+100, DistToObs_[ridx][xidx][yidx-1]+100);
-		  int temp2 = std::min(DistToObs_[ridx][xidx-1][yidx-1]+141, DistToObs_[ridx][xidx-1][yidx+1]+141);
-		  DistToObs_[ridx][xidx][yidx] = std::min(temp1, temp2);
-		}
-	  }
-	}
+        for (uint xidx = 0; xidx < x_size_; xidx++) {
+            for (uint yidx = 0; yidx < y_size_; yidx++) {
+                if (xidx == 0 || yidx == 0 || map_(xidx, yidx, zz) == OBS) {
+                    DistToObs_[ridx](xidx, yidx) = 0;
+                }
+                else {
+                    int temp1 = std::min(DistToObs_[ridx](xidx - 1, yidx) + 100, DistToObs_[ridx](xidx, yidx - 1) + 100);
+                    int temp2 = std::min(DistToObs_[ridx](xidx - 1, yidx - 1) + 141, DistToObs_[ridx](xidx - 1, yidx + 1) + 141);
+                    DistToObs_[ridx](xidx, yidx) = std::min(temp1, temp2);
+                }
+            }
+        }
 
-	for (int xidx=x_size_-1; xidx >=0; xidx--) {
-	  for (int yidx=y_size_-1; yidx >= 0; yidx--) {
-		if (xidx==x_size_-1 || yidx==y_size_-1 || map_[xidx][yidx][zz] == OBS) {
-		  DistToObs_[ridx][xidx][yidx] = 0;
-		} else {
-		  int temp1 = std::min(DistToObs_[ridx][xidx+1][yidx]+100, DistToObs_[ridx][xidx][yidx+1]+100);
-		  int temp2 = std::min(DistToObs_[ridx][xidx+1][yidx+1]+141, DistToObs_[ridx][xidx+1][yidx-1]+141);
-		  int temp3 = std::min(temp1, temp2);
-		  DistToObs_[ridx][xidx][yidx] = std::min(temp3, DistToObs_[ridx][xidx][yidx]);
-		}
-	  }
-	}
+        for (int xidx = x_size_ - 1; xidx >= 0; xidx--) {
+            for (int yidx = y_size_ - 1; yidx >= 0; yidx--) {
+                if (xidx == x_size_ - 1 || yidx == y_size_ - 1 || map_(xidx, yidx, zz) == OBS) {
+                    DistToObs_[ridx](xidx, yidx) = 0;
+                }
+                else {
+                    int temp1 = std::min(DistToObs_[ridx](xidx + 1, yidx) + 100, DistToObs_[ridx](xidx, yidx + 1) + 100);
+                    int temp2 = std::min(DistToObs_[ridx](xidx + 1, yidx + 1) + 141, DistToObs_[ridx](xidx + 1, yidx - 1) + 141);
+                    int temp3 = std::min(temp1, temp2);
+                    DistToObs_[ridx](xidx, yidx) = std::min(temp3, DistToObs_[ridx](xidx, yidx));
+                }
+            }
+        }
 
-	//   for (uint yidx=150; yidx >98; yidx--) {
-	  //   for (uint xidx=99; xidx < 150; xidx++) {
-		// 	printf("%4i ",DistToObs_[ridx][xidx][yidx]);
-		//   }
-		//   printf("\n");
-		//   }
-		//   printf("\n\n");
-		   }
-  }
+//        for (uint yidx = 150; yidx > 98; yidx--) {
+//            for (uint xidx = 99; xidx < 150; xidx++) {
+//                printf("%4i ", DistToObs_[ridx](xidx, yidx));
+//            }
+//            printf("\n");
+//        }
+//        printf("\n\n");
+    }
+}
 
-  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  //  Initialization  Fxns
-  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  void ExplorationPlanner::Init(ExpParams_c initparams) {
-	FREESPACE = initparams.freespace;
-	UNK = initparams.unk;
-	OBS = initparams.obs;
-	ObjectMaxElev_ = initparams.ObjectMaxElev;
-	NumAngles_ = initparams.NumAngles;
-	MinDist_ = initparams.MinDist;
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//  Initialization  Fxns
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void ExplorationPlanner::Init(ExpParams_c initparams)
+{
+    FREESPACE = initparams.freespace;
+    UNK = initparams.unk;
+    OBS = initparams.obs;
+    ObjectMaxElev_ = initparams.ObjectMaxElev;
+    NumAngles_ = initparams.NumAngles;
+    MinDist_ = initparams.MinDist;
 
-	robots_ = initparams.robots;
-	coverage_.Init(initparams.size_x, initparams.size_y, initparams.size_z, FREESPACE, UNK, OBS, &robots_);
+    robots_ = initparams.robots;
+    coverage_.Init(initparams.size_x, initparams.size_y, initparams.size_z, FREESPACE, UNK, OBS, &robots_);
 
-	CostToPts_.resize(robots_.size());
-	counts_.resize(robots_.size());
-	goal_.resize(robots_.size());
-	for (size_t ridx=0; ridx < CostToPts_.size(); ridx++) {
-	  CostToPts_[ridx].resize(coverage_.x_size_);
-	  counts_[ridx].resize(coverage_.x_size_);
-	  for(size_t xidx=0; xidx < coverage_.x_size_; xidx++) {
-		CostToPts_[ridx][xidx].resize(coverage_.y_size_);
-		counts_[ridx][xidx].resize(coverage_.y_size_);
-		for(uint yidx=0; yidx < coverage_.y_size_; yidx++) {
-		  counts_[ridx][xidx][yidx].resize(NumAngles_);
-		}
-	  }
-	}
+    CostToPts_.resize(robots_.size());
+    counts_.resize(robots_.size());
+    goal_.resize(robots_.size());
+    for (size_t ridx = 0; ridx < CostToPts_.size(); ridx++) {
+        CostToPts_[ridx].resize(coverage_.x_size_);
+        counts_[ridx].resize(coverage_.x_size_);
+        for (size_t xidx = 0; xidx < coverage_.x_size_; xidx++) {
+            CostToPts_[ridx][xidx].resize(coverage_.y_size_);
+            counts_[ridx][xidx].resize(coverage_.y_size_);
+            for (uint yidx = 0; yidx < coverage_.y_size_; yidx++) {
+                counts_[ridx][xidx][yidx].resize(NumAngles_);
+            }
+        }
+    }
 
-	GenMotionSteps();
-	GenVisibilityRing();
-  }
+    GenMotionSteps();
+    GenVisibilityRing();
+}
 
   void ExplorationPlanner::GenMotionSteps(void) {
 	mp_.clear();
@@ -285,65 +288,60 @@ void CoverageMap_c::UpdateDistances(void) {
   }
 
 
-  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  //  Minor private Fxns
-  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//  Minor private Fxns
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  void ExplorationPlanner::Dijkstra(Locations_c start, int robotnum) {
-	std::priority_queue<SearchPts_c, std::vector<SearchPts_c>, SPCompare > OPEN;
-	std::vector<std::vector<bool> > CLOSED;
-	SearchPts_c current, temp;
-	//printf("Dijkstra\n");
-	CLOSED.resize(coverage_.x_size_);
-	for (uint xidx=0; xidx < coverage_.x_size_; xidx++) {
-	  CLOSED[xidx].resize(coverage_.y_size_);
-	  for (uint yidx=0; yidx < coverage_.y_size_; yidx++) {
-		CLOSED[xidx][yidx] = false;
-	  }
-	}
+void ExplorationPlanner::Dijkstra(Locations_c start, int robotnum)
+{
+    std::priority_queue<SearchPts_c, std::vector<SearchPts_c>, SPCompare> OPEN;
+    std::vector<std::vector<bool>> CLOSED;
+    SearchPts_c current, temp;
 
-	//for (size_t ridx=0; ridx < robots_.size(); ridx++) {
-	  for (uint xidx=0; xidx < coverage_.x_size_; xidx++) {
-		for (uint yidx=0; yidx < coverage_.y_size_; yidx++) {
-		  CostToPts_[robotnum][xidx][yidx] = MaxCost;
-		}
-	  }
-	  // }
+    std::vector<std::size_t> closed_dims = { coverage_.x_size_, coverage_.y_size_ };
+    InitGrid(CLOSED, closed_dims, false);
 
-	  int robot_size = robots_[robotnum].CircularSize_;
-	  printf("%i size is %i\n", robotnum, robot_size);
+    for (uint xidx = 0; xidx < coverage_.x_size_; xidx++) {
+        for (uint yidx = 0; yidx < coverage_.y_size_; yidx++) {
+            CostToPts_[robotnum][xidx][yidx] = MaxCost;
+        }
+    }
 
-	  temp.x = start.x;
-	  temp.y = start.y;
-	  temp.z = start.z;
-	  temp.theta = start.theta;
-	  temp.cost = 10;
-	  OPEN.push(temp);
+    int robot_size = robots_[robotnum].CircularSize_;
+    printf("%i size is %i\n", robotnum, robot_size);
 
-	  while (!OPEN.empty() ) {
-		current = OPEN.top();
-		OPEN.pop();
+    temp.x = start.x;
+    temp.y = start.y;
+    temp.z = start.z;
+    temp.theta = start.theta;
+    temp.cost = 10;
+    OPEN.push(temp);
 
-		if (!CLOSED[current.x][current.y]) {
-		  CLOSED[current.x][current.y] = true;
-		  //printf("(%i %i)", current.x, current.y);
-		  CostToPts_[robotnum][current.x][current.y] = current.cost;
+    while (!OPEN.empty()) {
+        current = OPEN.top();
+        OPEN.pop();
 
-		  for(size_t midx=0; midx < mp_.size(); midx++) {
-			temp.x = current.x + mp_[midx].x;
-			temp.y = current.y + mp_[midx].y;
-			temp.z = current.z;
-			temp.theta = 0;
-			temp.cost = current.cost + mp_[midx].cost;
+        if (!CLOSED[current.x][current.y]) {
+            CLOSED[current.x][current.y] = true;
+            //printf("(%i %i)", current.x, current.y);
+            CostToPts_[robotnum][current.x][current.y] = current.cost;
 
-			if (coverage_.OnInflatedMap(temp.x, temp.y, temp.z, robotnum, robot_size ) && coverage_.Getval(temp.x, temp.y, temp.z) == FREESPACE) {
-			  OPEN.push(temp);
-			}
-		  }
-		}
-	  }
-	  //printf("\n");
-  }
+            for (size_t midx = 0; midx < mp_.size(); midx++) {
+                temp.x = current.x + mp_[midx].x;
+                temp.y = current.y + mp_[midx].y;
+                temp.z = current.z;
+                temp.theta = 0;
+                temp.cost = current.cost + mp_[midx].cost;
+
+                if (coverage_.OnInflatedMap(temp.x, temp.y, temp.z, robotnum, robot_size) &&
+                    coverage_.Getval(temp.x, temp.y, temp.z) == FREESPACE)
+                {
+                    OPEN.push(temp);
+                }
+            }
+        }
+    }
+}
 
   CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn) {
 	double dist = 1e99;
@@ -409,38 +407,36 @@ void CoverageMap_c::UpdateDistances(void) {
 //  public  Fxns
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-std::vector<Locations_c> ExplorationPlanner::NewGoals(std::vector<Locations_c> RobotLocations) {
-  for (size_t ridx=0; ridx<RobotLocations.size(); ridx++) {
-	printf("poses r%li X%i Y%i Z%i a%i \n", ridx, RobotLocations[ridx].x, RobotLocations[ridx].y, RobotLocations[ridx].z, RobotLocations[ridx].theta);
-	Dijkstra(RobotLocations[ridx], ridx);
-	//printMap(RobotLocations[ridx].z);
+std::vector<Locations_c> ExplorationPlanner::NewGoals(
+    std::vector<Locations_c> RobotLocations)
+{
+    for (size_t ridx = 0; ridx < RobotLocations.size(); ridx++) {
+        printf("poses r%li X%i Y%i Z%i a%i \n", ridx, RobotLocations[ridx].x, RobotLocations[ridx].y, RobotLocations[ridx].z, RobotLocations[ridx].theta);
+        Dijkstra(RobotLocations[ridx], ridx);
+        //printMap(RobotLocations[ridx].z);
+    }
 
-  }
-  CreateFrontier();
-  // for (uint ridx =0; ridx < robots_.size(); ridx++) {
-	//   printf("Robot %i\n", ridx);
-  // for (uint pidx=0; pidx < VisibilityRings_[ridx][robots_[ridx].SensorHeight_].size(); pidx++) {
-	//   printf("(%i %i)", VisibilityRings_[ridx][robots_[ridx].SensorHeight_][pidx].x, VisibilityRings_[ridx][robots_[ridx].SensorHeight_][pidx].y);
-  // }
-  // printf("\n");
-  //
-  // }
+    CreateFrontier();
+    // for (uint ridx =0; ridx < robots_.size(); ridx++) {
+    //   printf("Robot %i\n", ridx);
+    // for (uint pidx=0; pidx < VisibilityRings_[ridx][robots_[ridx].SensorHeight_].size(); pidx++) {
+    //   printf("(%i %i)", VisibilityRings_[ridx][robots_[ridx].SensorHeight_][pidx].x, VisibilityRings_[ridx][robots_[ridx].SensorHeight_][pidx].y);
+    // }
+    // printf("\n");
+    //
+    // }
 
-
-
-
-  std::vector<Locations_c> goals;
-  goals.resize(robots_.size());
-  for (size_t ridx=0; ridx< goal_.size(); ridx++) {
-	goals[ridx].x=goal_[ridx].x;
-	goals[ridx].y=goal_[ridx].y;
-	goals[ridx].z=goal_[ridx].z;
-	goals[ridx].theta = goal_[ridx].theta;
-	printf("goals r%li X%i Y%i Z%i a%i cost:%f\n", ridx, goals[ridx].x, goals[ridx].y, goals[ridx].z, goals[ridx].theta, goal_[ridx].cost);
-  }
-  return goals;
+    std::vector<Locations_c> goals;
+    goals.resize(robots_.size());
+    for (size_t ridx = 0; ridx < goal_.size(); ridx++) {
+        goals[ridx].x = goal_[ridx].x;
+        goals[ridx].y = goal_[ridx].y;
+        goals[ridx].z = goal_[ridx].z;
+        goals[ridx].theta = goal_[ridx].theta;
+        printf("goals r%li X%i Y%i Z%i a%i cost:%f\n", ridx, goals[ridx].x, goals[ridx].y, goals[ridx].z, goals[ridx].theta, goal_[ridx].cost);
+    }
+    return goals;
 }
-
 
 void ExplorationPlanner::UpdateMap(CoverageMap_c newmap) {
   coverage_ = newmap;

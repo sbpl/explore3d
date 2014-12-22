@@ -10,6 +10,8 @@
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
 
+#include <nav_msgs/OccupancyGrid.h>
+
 #include <tf/transform_listener.h>
 
 class EP_wrapper
@@ -43,6 +45,16 @@ private:
     double discrete_to_continuous(int disc, double res);
 
     void publish_goal_list(const std::vector<Locations_c> & goal_list);
+
+    void get_occupancy_grid_from_costmap(
+            const ExplorationPlanner::CostMap& costmap,
+            const ros::Time& time,
+            nav_msgs::OccupancyGrid& map) const;
+
+    void get_occupancy_grid_from_countmap(
+            const ExplorationPlanner::CountMap& countmap,
+            const ros::Time& time,
+            nav_msgs::OccupancyGrid& map) const;
 
     template<typename T>
     void get_point_cloud_from_map(const std::vector<T> &map, std::vector<pcl::PointXYZI> & points);

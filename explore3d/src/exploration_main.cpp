@@ -206,7 +206,7 @@ bool EP_wrapper::init(void)
     cost_map_pub.reserve(params.robots.size());
     counts_map_pub.reserve(params.robots.size());
     for (const Robot_c& robot : params.robots) {
-        ros::Publisher robot_costmap_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI>>(robot.name + "_cost_map", 1);
+        ros::Publisher robot_costmap_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_cost_map", 1);
         ros::Publisher robot_counts_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI>>(robot.name + "_counts_map", 1);
         cost_map_pub.push_back(robot_costmap_pub);
         counts_map_pub.push_back(robot_counts_map_pub);
@@ -355,8 +355,26 @@ void EP_wrapper::publish_point_cloud(const std::vector<pcl::PointXYZI>& points, 
 void EP_wrapper::publish_planner_maps()
 {
     ROS_INFO("publishing maps....");
+
+    ros::Time now = ros::Time::now();
+
+    std::vector<std::vector<std::vector<char>>> map_as_vectors;
+    const auto& grid = EP.coverage_.map_;
+
+    // TODO: remove terrible copying here
+    map_as_vectors.resize(grid.size(0));
+    for (int x = 0; x < grid.size(0); ++x) {
+        map_as_vectors[x].resize(grid.size(1));
+        for (int y = 0; y < grid.size(1); ++y) {
+            map_as_vectors[x][y].resize(grid.size(2));
+            for (int z = 0; z < grid.size(2); ++z) {
+                map_as_vectors[x][y][z] = grid(x, y, z);
+            }
+        }
+    }
+
     std::vector<pcl::PointXYZI> coverage_points;
-    get_point_cloud_from_map(EP.coverage_.map_, coverage_points);
+    get_point_cloud_from_map(map_as_vectors, coverage_points);
     publish_point_cloud(coverage_points, coverage_map_pub);
 
     std::vector<pcl::PointXYZI> frontier_points;
@@ -364,9 +382,9 @@ void EP_wrapper::publish_planner_maps()
     publish_point_cloud(frontier_points, frontier_map_pub);
 
     for (std::size_t i = 0; i < params.robots.size(); ++i) {
-        std::vector<pcl::PointXYZI> cost_points;
-        get_point_cloud_from_map(EP.CostToPts_.at(i), cost_points);
-        publish_point_cloud(cost_points, cost_map_pub.at(i));
+        nav_msgs::OccupancyGrid grid;
+        get_occupancy_grid_from_costmap(EP.CostToPts_.at(i), now, grid);
+        cost_map_pub.at(i).publish(grid);
 
         std::vector<pcl::PointXYZI> count_points;
         get_point_cloud_from_map(EP.counts_.at(i), count_points);
@@ -374,6 +392,74 @@ void EP_wrapper::publish_planner_maps()
     }
 
     ROS_INFO("done");
+}
+
+void EP_wrapper::get_occupancy_grid_from_costmap(
+    const ExplorationPlanner::CostMap& costmap,
+    const ros::Time& time,
+    nav_msgs::OccupancyGrid& map) const
+{
+    map.header.frame_id = frame_id;
+    map.header.stamp = time;
+
+    map.info.width = size_x;
+    map.info.height = size_y;
+    map.info.origin.position.x = origin_x;
+    map.info.origin.position.y = origin_y;
+    map.info.origin.position.z = origin_z;
+    map.info.resolution = resolution;
+
+    map.data.resize(size_x * size_y);
+
+    // find the minimum and maximum non-infinite costs in the costmap
+    CostType min_cost = -1.0, max_cost = -1.0;
+    for (std::size_t x = 0; x < costmap.size(); ++x) {
+        const std::vector<CostType>& costs = costmap[x];
+        for (std::size_t y = 0; y < costs.size(); ++y) {
+            CostType cost = costs[y];
+            if (cost == MaxCost) {
+                continue;
+            }
+
+            if (min_cost == -1.0 || cost < min_cost) {
+                min_cost = cost;
+            }
+            if (max_cost == -1.0 || cost > max_cost) {
+                max_cost = cost;
+            }
+        }
+    }
+
+    double span = max_cost - min_cost;
+    ROS_INFO("Costs span %0.3f (max: %0.3f, min: %0.3f)", span, min_cost, max_cost);
+
+    for (std::size_t x = 0; x < costmap.size(); ++x) {
+        const std::vector<CostType>& costs = costmap[x];
+        for (std::size_t y = 0; y < costs.size(); ++y) {
+            CostType cost = costs[y];
+            if (cost == MaxCost) {
+                map.data[y * size_x + x] = 0xFF;
+            }
+            else {
+                if (span == 0.0) {
+                    map.data[y * size_x + x] = 0;
+                }
+                else {
+                    map.data[y * size_x + x] = (255 * ((cost - min_cost) / span));
+                }
+            }
+        }
+    }
+}
+
+void EP_wrapper::get_occupancy_grid_from_countmap(
+    const ExplorationPlanner::CountMap& countmap,
+    const ros::Time& time,
+    nav_msgs::OccupancyGrid& map) const
+{
+    ExplorationPlanner::CostMap costmap;
+
+    // downproject countmap to costmap
 }
 
 template<typename T>

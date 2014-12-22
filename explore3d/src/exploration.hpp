@@ -10,6 +10,8 @@
 #include <mutex>
 #include <thread>
 
+#include "Grid.h"
+
 typedef double CostType;
 #define MaxCost 1e99
 
@@ -17,6 +19,13 @@ class Locations_c;
 class SearchPts_c;
 class pts2d;
 class Robot_c;
+
+/// Create a grid with dimension \dimensions.size() and fill with value \val.
+template <typename MapType, typename T>
+void InitGrid(MapType& map, const std::vector<std::size_t>& dims, T val);
+
+template <typename MapType, typename T>
+void InitGridRecursive(MapType& map, const std::vector<std::size_t>& dims, T val, std::size_t dim);
 
 class MapElement_c {
 public:
@@ -58,24 +67,28 @@ public:
   }
 };
 
-class CoverageMap_c {
+class CoverageMap_c
+{
 public:
+
   bool Init(uint x, uint y, uint z, unsigned char fs, unsigned char unk, unsigned char ob, std::vector<Robot_c>* RobotPtr);
   bool OnMap(int x, int y, int z) {return (x< x_size_ && y<y_size_ && z<z_size_ && x>=0 && y>=0 && z>=0);};
-  void Setval(int x, int y, int z, char val) {if (OnMap(x,y,z)) map_[x][y][z]=val;};
-  unsigned char Getval(int x, int y, int z) {if (OnMap(x, y, z)) return map_[x][y][z]; else return 255;};
+  void Setval(int x, int y, int z, char val) {if (OnMap(x,y,z)) map_(x, y, z)=val;};
+  unsigned char Getval(int x, int y, int z) {if (OnMap(x, y, z)) return map_(x, y, z); else return 255;};
   std::vector<SearchPts_c> GetFrontier3d(void);
   void UpdateDistances(void);
-  bool OnInflatedMap(int x, int y, int z, int rn, int robot_size) {return OnMap(x,y,z) && DistToObs_[rn][x][y] >= robot_size*100;};
-  double ReturnDistToObs(int rn, int x, int y) {if (OnMap(x,y,0)) {return (double)DistToObs_[rn][x][y]/100.0;} };
+  bool OnInflatedMap(int x, int y, int z, int rn, int robot_size) {return OnMap(x,y,z) && DistToObs_[rn](x, y) >= robot_size*100;};
+  double ReturnDistToObs(int rn, int x, int y) {if (OnMap(x,y,0)) {return (double)DistToObs_[rn](x, y)/100.0;} };
 
   uint x_size_;
   uint y_size_;
   uint z_size_;
-  std::vector<std::vector<std::vector<char> > > map_;     //[x][y][z]
+
+  au::Grid<3, char> map_; // (x, y, z)
+
 private:
 
-  std::vector<std::vector<std::vector<int> > > DistToObs_;   //[robot][x][y]
+  std::vector<au::Grid<2, int>> DistToObs_;
   unsigned char FREESPACE, OBS, UNK;
   std::vector<Robot_c>* robotsPtr_;
 };
@@ -109,7 +122,6 @@ protected:
   std::vector<Robot_c> robots_;
 private:
 
-
   void PrecalcVisibilityCircles(void);
   void Dijkstra(Locations_c start, int robotnum);
   void CreateFrontier(void);
@@ -125,20 +137,47 @@ private:
 
 public:
 
+  typedef std::vector<std::vector<CostType>> CostMap;
+  typedef std::vector<std::vector<std::vector<int>>> CountMap;
+
+
   CoverageMap_c coverage_;
   uint ObjectMaxElev_, NumAngles_;
   unsigned char FREESPACE, OBS, UNK;
   uint MinDist_;
 
   std::vector<SearchPts_c> mp_;  //motion primitives
-  std::vector<std::vector<std::vector<CostType> > > CostToPts_;   //[robot][x][y]
+  std::vector<CostMap> CostToPts_;   //[robot][x][y]
   std::vector<SearchPts_c> goal_;  //[robot]
   std::vector<SearchPts_c> Frontier3d_;
-  std::vector<std::vector<std::vector<std::vector<int> > > > counts_;						// [robot][x[][y][angle]
+  std::vector<CountMap> counts_;						// [robot][x[][y][angle]
   std::vector<std::vector<std::vector<pts2d> > > VisibilityRings_;		// [robot][z][points]
 
   void Init(ExpParams_c initparams);
   void UpdateMap(CoverageMap_c new_map);
   void PartialUpdateMap(std::vector<MapElement_c> pts);
   std::vector<Locations_c> NewGoals(std::vector<Locations_c> RobotLocations);
+
 };
+
+
+template <typename MapType, typename T>
+void InitGrid(MapType& map, const std::vector<std::size_t>& dims, T val)
+{
+//    InitGridRecursive(map, dims, val, 0);
+}
+
+template <typename MapType, typename T>
+void InitGridRecursive(MapType& map, const std::vector<std::size_t>& dims, T val, std::size_t dim)
+{
+//    if (dim == dims.size() - 1) {
+//        map[dim].resize(dims[dim]);
+//        for (std::size_t i = 0; i < map[dim].size(); ++i) {
+//            map[dim][i] = val;
+//        }
+//    }
+//    else {
+//        map[dim].resize(dims[dim]);
+//        InitGridRecursive(map, dims, val, dim + 1);
+//    }
+}
