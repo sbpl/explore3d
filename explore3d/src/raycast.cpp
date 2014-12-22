@@ -103,7 +103,7 @@ void ExplorationPlanner::raycast3d(SearchPts_c start, int robotnum) {
 	  bool result = bresenham_line_3D(start.x, start.y, start.z, x, y, z);
 	  if (result) {
 		//	printf("r%i x%i y%i z%i p%i a%i c%i", robotnum, x, y, start.z, pidx, VisibilityRings_[robotnum][start.z][pidx].angle, counts_[robotnum][x][y][VisibilityRings_[robotnum][start.z][pidx].theta]);
-	counts_[robotnum][x][y][VisibilityRings_[robotnum][start.z][pidx].theta]++;
+	counts_[robotnum](x, y, VisibilityRings_[robotnum][start.z][pidx].theta)++;
 	  }
 	}
 //	printf("\n");

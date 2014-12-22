@@ -168,18 +168,12 @@ void ExplorationPlanner::Init(ExpParams_c initparams)
 
     CostToPts_.resize(robots_.size());
     counts_.resize(robots_.size());
-    goal_.resize(robots_.size());
     for (size_t ridx = 0; ridx < CostToPts_.size(); ridx++) {
-        CostToPts_[ridx].resize(coverage_.x_size_);
-        counts_[ridx].resize(coverage_.x_size_);
-        for (size_t xidx = 0; xidx < coverage_.x_size_; xidx++) {
-            CostToPts_[ridx][xidx].resize(coverage_.y_size_);
-            counts_[ridx][xidx].resize(coverage_.y_size_);
-            for (uint yidx = 0; yidx < coverage_.y_size_; yidx++) {
-                counts_[ridx][xidx][yidx].resize(NumAngles_);
-            }
-        }
+        CostToPts_[ridx].resize(coverage_.x_size_, coverage_.y_size_);
+        counts_[ridx].resize(coverage_.x_size_, coverage_.y_size_, NumAngles_);
     }
+
+    goal_.resize(robots_.size());
 
     GenMotionSteps();
     GenVisibilityRing();
@@ -241,7 +235,7 @@ void ExplorationPlanner::Init(ExpParams_c initparams)
 	  for (uint xidx=0; xidx < coverage_.x_size_; xidx++) {
 		for (uint yidx=0; yidx < coverage_.y_size_; yidx++) {
 		  for (uint aidx=0; aidx < NumAngles_; aidx++) {
-			counts_[ridx][xidx][yidx][aidx] = 0;
+			counts_[ridx](xidx, yidx, aidx) = 0;
 		  }
 		}
 	  }
@@ -267,7 +261,7 @@ void ExplorationPlanner::Init(ExpParams_c initparams)
 	for (uint yidx=y1-1; yidx >=y0; yidx--) {
 	  printf("%4i ", yidx);
 	  for (uint xidx=x0; xidx < x1; xidx++) {
-		printf("%4.0f ", CostToPts_[rn][xidx][yidx]);
+		printf("%4.0f ", CostToPts_[rn](xidx, yidx));
 	  }
 	  printf("\n");
 	}
@@ -279,7 +273,7 @@ void ExplorationPlanner::Init(ExpParams_c initparams)
 	  for (uint xidx=x0; xidx < x1; xidx++) {
 		int c=0;
 		for (uint aidx=0; aidx < NumAngles_; aidx++) {
-		  c += counts_[rn][xidx][yidx][aidx];
+		  c += counts_[rn](xidx, yidx, aidx);
 		}
 		printf("%4i ", c);
 	  }
@@ -303,7 +297,7 @@ void ExplorationPlanner::Dijkstra(Locations_c start, int robotnum)
 
     for (uint xidx = 0; xidx < coverage_.x_size_; xidx++) {
         for (uint yidx = 0; yidx < coverage_.y_size_; yidx++) {
-            CostToPts_[robotnum][xidx][yidx] = MaxCost;
+            CostToPts_[robotnum](xidx, yidx) = MaxCost;
         }
     }
 
@@ -324,7 +318,7 @@ void ExplorationPlanner::Dijkstra(Locations_c start, int robotnum)
         if (!CLOSED[current.x][current.y]) {
             CLOSED[current.x][current.y] = true;
             //printf("(%i %i)", current.x, current.y);
-            CostToPts_[robotnum][current.x][current.y] = current.cost;
+            CostToPts_[robotnum](current.x, current.y) = current.cost;
 
             for (size_t midx = 0; midx < mp_.size(); midx++) {
                 temp.x = current.x + mp_[midx].x;
@@ -343,26 +337,28 @@ void ExplorationPlanner::Dijkstra(Locations_c start, int robotnum)
     }
 }
 
-  CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn) {
-	double dist = 1e99;
-	for (size_t ridx=0; ridx < goal_.size(); ridx++) {
-	  if (ridx != rn) {
-		double temp_dist = (x-goal_[ridx].x)*(x-goal_[ridx].x) + (y-goal_[ridx].y)*(y-goal_[ridx].y) + (z-goal_[ridx].z)*(z-goal_[ridx].z);
-		if (temp_dist < dist) {
-		  dist = temp_dist;
-		}
-	  }
-	}
+CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn)
+{
+    double dist = 1e99;
+    for (size_t ridx = 0; ridx < goal_.size(); ridx++) {
+        if (ridx != rn) {
+            double temp_dist = (x - goal_[ridx].x) * (x - goal_[ridx].x) + (y - goal_[ridx].y) * (y - goal_[ridx].y) + (z - goal_[ridx].z) * (z - goal_[ridx].z);
+            if (temp_dist < dist) {
+                dist = temp_dist;
+            }
+        }
+    }
 
-	if (dist < MinDist_*MinDist_) {
-	  dist /= (MinDist_*MinDist_);
-	} else {
-	  dist = 1;
-	}
+    if (dist < MinDist_ * MinDist_) {
+        dist /= (MinDist_ * MinDist_);
+    }
+    else {
+        dist = 1;
+    }
 
-	CostType rtnval = counts_[rn][x][y][a]/CostToPts_[rn][x][y] * dist;
-	return rtnval;
-  }
+    CostType rtnval = counts_[rn](x, y, a) / CostToPts_[rn](x, y) * dist;
+    return rtnval;
+}
 
   void ExplorationPlanner::CreateFrontier(void) {
 	Frontier3d_ = coverage_.GetFrontier3d();
@@ -389,8 +385,8 @@ void ExplorationPlanner::Dijkstra(Locations_c start, int robotnum)
 			// 		  if (xidx==150 && yidx==150) {
 			  // 			printf("%li angle:%i cost:%f  counts:%i ratio:%f goal:%f\n", ridx, aidx, CostToPts_[ridx][xidx][yidx], counts_[ridx][xidx][yidx][aidx], counts_[ridx][xidx][yidx][aidx]/CostToPts_[ridx][xidx][yidx], goal_[ridx].cost);
 			  // 		  }
-			  if (CostToPts_[ridx][xidx][yidx] !=MaxCost && EvalFxn(xidx, yidx, goal_[ridx].z, aidx, ridx)  > goal_[ridx].cost) {
-				goal_[ridx].cost = counts_[ridx][xidx][yidx][aidx]/CostToPts_[ridx][xidx][yidx];
+			  if (CostToPts_[ridx](xidx, yidx) !=MaxCost && EvalFxn(xidx, yidx, goal_[ridx].z, aidx, ridx)  > goal_[ridx].cost) {
+				goal_[ridx].cost = counts_[ridx](xidx, yidx, aidx)/CostToPts_[ridx](xidx, yidx);
 				goal_[ridx].x = xidx;
 				goal_[ridx].y = yidx;
 				goal_[ridx].theta = aidx;

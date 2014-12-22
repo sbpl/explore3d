@@ -137,9 +137,8 @@ private:
 
 public:
 
-  typedef std::vector<std::vector<CostType>> CostMap;
-  typedef std::vector<std::vector<std::vector<int>>> CountMap;
-
+  typedef au::Grid<2, CostType> CostMap;
+  typedef au::Grid<3, CostType> CountMap;
 
   CoverageMap_c coverage_;
   uint ObjectMaxElev_, NumAngles_;

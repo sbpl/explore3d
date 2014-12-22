@@ -386,9 +386,9 @@ void EP_wrapper::publish_planner_maps()
         get_occupancy_grid_from_costmap(EP.CostToPts_.at(i), now, grid);
         cost_map_pub.at(i).publish(grid);
 
-        std::vector<pcl::PointXYZI> count_points;
-        get_point_cloud_from_map(EP.counts_.at(i), count_points);
-        publish_point_cloud(count_points, counts_map_pub.at(i));
+        nav_msgs::OccupancyGrid count_grid;
+        get_occupancy_grid_from_countmap(EP.counts_.at(i), now, count_grid);
+        counts_map_pub.at(i).publish(count_grid);
     }
 
     ROS_INFO("done");
@@ -413,10 +413,9 @@ void EP_wrapper::get_occupancy_grid_from_costmap(
 
     // find the minimum and maximum non-infinite costs in the costmap
     CostType min_cost = -1.0, max_cost = -1.0;
-    for (std::size_t x = 0; x < costmap.size(); ++x) {
-        const std::vector<CostType>& costs = costmap[x];
-        for (std::size_t y = 0; y < costs.size(); ++y) {
-            CostType cost = costs[y];
+    for (std::size_t x = 0; x < costmap.size(0); ++x) {
+        for (std::size_t y = 0; y < costmap.size(1); ++y) {
+            CostType cost = costmap(x, y);
             if (cost == MaxCost) {
                 continue;
             }
@@ -433,10 +432,9 @@ void EP_wrapper::get_occupancy_grid_from_costmap(
     double span = max_cost - min_cost;
     ROS_INFO("Costs span %0.3f (max: %0.3f, min: %0.3f)", span, min_cost, max_cost);
 
-    for (std::size_t x = 0; x < costmap.size(); ++x) {
-        const std::vector<CostType>& costs = costmap[x];
-        for (std::size_t y = 0; y < costs.size(); ++y) {
-            CostType cost = costs[y];
+    for (std::size_t x = 0; x < costmap.size(0); ++x) {
+        for (std::size_t y = 0; y < costmap.size(1); ++y) {
+            CostType cost = costmap(x, y);
             if (cost == MaxCost) {
                 map.data[y * size_x + x] = 0xFF;
             }
