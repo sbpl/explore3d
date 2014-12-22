@@ -207,7 +207,7 @@ bool EP_wrapper::init(void)
     counts_map_pub.reserve(params.robots.size());
     for (const Robot_c& robot : params.robots) {
         ros::Publisher robot_costmap_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_cost_map", 1);
-        ros::Publisher robot_counts_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI>>(robot.name + "_counts_map", 1);
+        ros::Publisher robot_counts_map_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_counts_map", 1);
         cost_map_pub.push_back(robot_costmap_pub);
         counts_map_pub.push_back(robot_counts_map_pub);
     }
