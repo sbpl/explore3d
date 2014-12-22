@@ -4,6 +4,8 @@
 
 #include "exploration_main.hpp"
 
+#include <unordered_map>
+
 void EP_wrapper::plannerthread(void)
 {
     ros::Rate looprate(planner_rate);
@@ -429,8 +431,28 @@ void EP_wrapper::get_occupancy_grid_from_costmap(
         }
     }
 
+    // log a histogram of the costs in the map
+    std::unordered_map<CostType, int> cost_histogram;
+    for (std::size_t x = 0; x < costmap.size(0); ++x) {
+        for (std::size_t y = 0; y < costmap.size(1); ++y) {
+            CostType cost = costmap(x, y);
+            auto cit = cost_histogram.find(cost);
+            if (cit == cost_histogram.end()) {
+                cost_histogram[cost] = 1;
+            }
+            else {
+                ++cost_histogram[cost];
+            }
+        }
+    }
+
+    ROS_INFO("Cost Histogram:");
+    for (const auto& entry : cost_histogram) {
+        ROS_INFO("  %0.3f: %d", entry.first, entry.second);
+    }
+
     double span = max_cost - min_cost;
-    ROS_INFO("Costs span %0.3f (max: %0.3f, min: %0.3f)", span, min_cost, max_cost);
+    ROS_INFO("Costs span %0.3f (min: %0.3f, max: %0.3f)", span, min_cost, max_cost);
 
     for (std::size_t x = 0; x < costmap.size(0); ++x) {
         for (std::size_t y = 0; y < costmap.size(1); ++y) {

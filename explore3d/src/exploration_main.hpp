@@ -17,6 +17,7 @@
 class EP_wrapper
 {
 public:
+
     EP_wrapper();
     void plannerthread(void);
     bool init(void);
@@ -25,6 +26,7 @@ public:
     ~EP_wrapper();
 
 private:
+
     ExplorationPlanner EP;
     ExpParams_c params;
     std::vector<Locations_c> CurrentLocations_;

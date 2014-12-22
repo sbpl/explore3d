@@ -29,6 +29,8 @@
 
 #include "Grid.h"
 
+#include <sstream>
+
 template<class T> typename std::add_rvalue_reference<T>::type val();
 template <class T> struct id { typedef T type; };
 
@@ -115,7 +117,9 @@ typename Grid<N, T>::reference Grid<N, T>::at(CoordTypes... coords)
 {
     size_type ind = this->coord_to_index(coords...);
     if (!(ind < this->total_size())) {
-        throw std::out_of_range();
+        std::stringstream ss;
+        ss << "invalid index " << ind << " into array of size " << this->total_size();
+        throw std::out_of_range(ss.str());
     }
     return data_[ind];
 }
@@ -220,15 +224,15 @@ template <typename... CoordTypes>
 typename Grid<N, T>::size_type Grid<N, T>::coord_to_index(CoordTypes... coords)
 {
     size_type s = 1;
-    return this->coord_to_index_rec<N-1>(s, coords...);
+    return this->coord_to_index_rec<0>(s, coords...);
 }
 
 template <int N, typename T>
 template <int DIM, typename... CoordTypes, typename Coord>
 typename Grid<N, T>::size_type Grid<N, T>::coord_to_index_rec(size_type& agg, Coord coord, CoordTypes... coords)
 {
-    size_type s = this->coord_to_index_rec<DIM-1>(agg, coords...);
-    agg *= dims_[DIM];
+    size_type s = this->coord_to_index_rec<DIM+1>(agg, coords...);
+    agg *= dims_[DIM + 1];
     return agg * coord + s;
 }
 
@@ -236,7 +240,7 @@ template <int N, typename T>
 template <int DIM, typename Coord>
 typename Grid<N, T>::size_type Grid<N, T>::coord_to_index_rec(size_type& agg, Coord coord)
 {
-    static_assert(DIM == 0, "Something is wrong");
+    static_assert(DIM == N - 1, "Something is wrong");
     return agg * coord;
 }
 

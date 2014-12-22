@@ -173,7 +173,7 @@ void ExplorationPlanner::Init(ExpParams_c initparams)
 
     CostToPts_.resize(robots_.size());
     counts_.resize(robots_.size());
-    for (size_t ridx = 0; ridx < CostToPts_.size(); ridx++) {
+    for (size_t ridx = 0; ridx < robots_.size(); ridx++) {
         CostToPts_[ridx].resize(coverage_.x_size_, coverage_.y_size_);
         counts_[ridx].resize(coverage_.x_size_, coverage_.y_size_, NumAngles_);
     }
