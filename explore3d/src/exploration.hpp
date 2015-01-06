@@ -125,7 +125,7 @@ public:
         return OnMap(x, y, z) && DistToObs_[rn](x, y) >= robot_size * 100;
     }
 
-    /// @brief Return the distance to the nearest obstacle, in cells, from cell (\x, \y).
+    /// @brief Return the distance to the nearest obstacle, in cells, from cell (\x, \y) or -1 if the cell is off the map.
     double ReturnDistToObs(int rn, int x, int y)
     {
         if (OnMap(x,y,0)) {
