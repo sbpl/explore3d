@@ -81,7 +81,7 @@ void EP_wrapper::PoseCallback(const nav_msgs::PathConstPtr& msg)
     bool hexa_bound_check = true;
     bool segbot_bound_check = true;
 
-    //bounds check both robot locationss
+    // bounds check both robot locationss
     if (!bounds_check(SegLoc)) {
         segbot_bound_check = false;
         ROS_ERROR("ERROR: segbot location at discrete location %d %d %d outside of mapbounds %u %u %u", SegLoc.x, SegLoc.y, SegLoc.z, size_x, size_y, size_y);
@@ -96,11 +96,13 @@ void EP_wrapper::PoseCallback(const nav_msgs::PathConstPtr& msg)
         return;
     }
 
-    std::unique_lock<std::mutex> data_lock(data_mutex_);
-    CurrentLocations_.clear();
-    CurrentLocations_.push_back(SegLoc);
-    CurrentLocations_.push_back(HexaLoc);
-    data_lock.unlock();
+    {
+        std::unique_lock<std::mutex> data_lock(data_mutex_);
+        CurrentLocations_.clear();
+        CurrentLocations_.push_back(SegLoc);
+        CurrentLocations_.push_back(HexaLoc);
+    }
+
     got_first_pose_update = true;
 }
 

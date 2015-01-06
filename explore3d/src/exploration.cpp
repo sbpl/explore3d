@@ -33,7 +33,13 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //  Minor Classes
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-bool CoverageMap_c::Init(uint x, uint y, uint z, unsigned char fs, unsigned char unk, unsigned char ob, std::vector<Robot_c> *RobotPtr)
+
+bool CoverageMap_c::Init(
+    uint x, uint y, uint z,
+    unsigned char fs,
+    unsigned char unk,
+    unsigned char ob,
+    std::vector<Robot_c> *RobotPtr)
 {
     x_size_ = x;
     y_size_ = y;
@@ -55,7 +61,7 @@ bool CoverageMap_c::Init(uint x, uint y, uint z, unsigned char fs, unsigned char
     return true;
 }
 
-std::vector<SearchPts_c> CoverageMap_c::GetFrontier3d(void)
+std::vector<SearchPts_c> CoverageMap_c::GetFrontier3d()
 {
     std::vector<SearchPts_c> fpts;
     SearchPts_c temp;
@@ -114,7 +120,7 @@ bool ptssort(const pts2d & pt1, const pts2d & pt2)
         return false;
 }
 
-void CoverageMap_c::UpdateDistances(void)
+void CoverageMap_c::UpdateDistances()
 {
     for (size_t ridx = 0; ridx < DistToObs_.size(); ridx++) {
         uint zz = (*robotsPtr_)[ridx].MotionHeight_;
@@ -145,14 +151,6 @@ void CoverageMap_c::UpdateDistances(void)
                 }
             }
         }
-
-//        for (uint yidx = 150; yidx > 98; yidx--) {
-//            for (uint xidx = 99; xidx < 150; xidx++) {
-//                printf("%4i ", DistToObs_[ridx](xidx, yidx));
-//            }
-//            printf("\n");
-//        }
-//        printf("\n\n");
     }
 }
 
