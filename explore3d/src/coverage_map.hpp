@@ -16,6 +16,8 @@ class CoverageMap_c
 {
 public:
 
+    typedef au::Grid<3, char> Map;
+
     /// @brief Initialize the coverage map of size (\x * \y * \z) cells.
     /// @param x, y, z The dimensions of the three-dimensional coverage map
     /// @param fs The value of a freespace cell
@@ -32,7 +34,7 @@ public:
     /// @brief Return whether the cell (\x, \y, \z) is within the map boundaries.
     bool OnMap(int x, int y, int z)
     {
-        return (x < x_size_ && y < y_size_ && z < z_size_ && x >= 0 && y >= 0 && z >= 0);
+        return (x < (int)x_size_ && y < (int)y_size_ && z < (int)z_size_ && x >= 0 && y >= 0 && z >= 0);
     }
 
     void Setval(int x, int y, int z, char val)

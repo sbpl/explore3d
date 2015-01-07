@@ -47,7 +47,7 @@ std::vector<SearchPts_c> CoverageMap_c::GetFrontier3d()
                         temp.y = yidx;
                         temp.z = zidx;
                         fpts.push_back(temp);
-                        //	printf("(%i %i %i)", xidx, yidx, zidx);
+                        // printf("(%i %i %i)", xidx, yidx, zidx);
                     }
                 }
             }
