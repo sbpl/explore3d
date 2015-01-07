@@ -28,5 +28,11 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 #target_link_libraries(${PROJECT_NAME} another_library)
 #rosbuild_add_boost_directories()
 #rosbuild_link_boost(${PROJECT_NAME} thread)
-rosbuild_add_executable(explore3d src/exploration.cpp src/raycast.cpp src/exploration_main.cpp)
+rosbuild_add_executable(
+    explore3d
+    src/exploration.cpp
+    src/raycast.cpp
+    src/exploration_main.cpp
+    src/exploration_structs.cpp
+    src/coverage_map.cpp)
 #target_link_libraries(example ${PROJECT_NAME})
