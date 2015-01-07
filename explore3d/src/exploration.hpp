@@ -30,8 +30,10 @@ class ExplorationPlanner
 {
 public:
 
+    typedef CoverageMap_c::Map Map;
     typedef au::Grid<2, CostType> CostMap;
     typedef au::Grid<3, CostType> CountMap;
+    typedef au::Grid<3, CostType> ScoreMap;
 
     CoverageMap_c coverage_;
     uint ObjectMaxElev_, NumAngles_;
@@ -42,7 +44,8 @@ public:
     std::vector<CostMap> CostToPts_;                                    //[robot](x, y)
     std::vector<SearchPts_c> goal_;                                     //[robot]
     std::vector<SearchPts_c> Frontier3d_;
-    std::vector<CountMap> counts_;                                      // [robot][x[][y][angle]
+    std::vector<CountMap> counts_;                                      // [robot][x][y][angle]
+    std::vector<ScoreMap> scores_;                                      // [robot](x, y, yaw)
     std::vector<std::vector<std::vector<pts2d> > > VisibilityRings_;    // [robot][z][points]
 
     void Init(ExpParams_c initparams);

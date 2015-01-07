@@ -32,6 +32,39 @@ private:
     std::vector<Locations_c> CurrentLocations_;
     std::vector<MapElement_c> MapPts_;
 
+    double scale;
+    double planner_rate;
+
+    double origin_x;
+    double origin_y;
+    double origin_z;
+    double resolution;
+
+    double angle_resolution;
+    int size_x;
+    int size_y;
+    int size_z;
+    std::string frame_id;
+    bool got_first_map_update;
+    bool got_first_pose_update;
+
+    std::mutex data_mutex_;
+    std::thread *EP_thread_;
+    ros::Publisher Goal_pub_;
+    ros::Publisher Goal_point_cloud_pub;
+
+    ros::Publisher frontier_map_pub;
+
+    std::vector<ros::Publisher> coverage_map_pub_;
+    std::vector<ros::Publisher> cost_map_pub;
+    std::vector<ros::Publisher> counts_map_pub;
+    std::vector<ros::Publisher> score_map_pub;
+
+    ros::Subscriber Map_sub_, Pose_sub_;
+    std::string goal_topic_, map_topic_, pose_topic_, goal_point_cloud_topic;
+    ros::NodeHandle nh;
+    ros::NodeHandle ph;
+
     template<typename T> bool bounds_check(const T & point);
 
     void quaternion_to_yaw(const geometry_msgs::Quaternion & quat, double & yaw);
@@ -48,6 +81,16 @@ private:
 
     void publish_goal_list(const std::vector<Locations_c> & goal_list);
 
+    void get_occupancy_grid_from_map_at_height(
+            const ExplorationPlanner::Map& epmap,
+            const ros::Time& time,
+            nav_msgs::OccupancyGrid& map,
+            uint height);
+
+    // Create an occupancy grid from a costmap. Invalid values have the value
+    // 0xFF in the occupancy grid, normal values have a value between 0 and 100
+    // representing the value between the minimum cost and the maximum cost in
+    // the costmap.
     void get_occupancy_grid_from_costmap(
             const ExplorationPlanner::CostMap& costmap,
             const ros::Time& time,
@@ -83,35 +126,4 @@ private:
 
     bool create_robot_from_config(XmlRpc::XmlRpcValue& params, double scale, Robot_c& robot);
     void log_robots(const std::vector<Robot_c>& robots);
-
-    double scale;
-    double planner_rate;
-    double origin_x;
-    double origin_y;
-    double origin_z;
-    double resolution;
-    double angle_resolution;
-    int size_x;
-    int size_y;
-    int size_z;
-    std::string frame_id;
-    bool got_first_map_update;
-    bool got_first_pose_update;
-
-    std::mutex data_mutex_;
-    std::thread *EP_thread_;
-    ros::Publisher Goal_pub_;
-    ros::Publisher Goal_point_cloud_pub;
-
-    ros::Publisher coverage_map_pub;
-    ros::Publisher frontier_map_pub;
-
-    std::vector<ros::Publisher> cost_map_pub;
-    std::vector<ros::Publisher> counts_map_pub;
-
-    ros::Subscriber Map_sub_, Pose_sub_;
-    std::string goal_topic_, map_topic_, pose_topic_, goal_point_cloud_topic;
-    ros::NodeHandle nh;
-    ros::NodeHandle ph;
 };
-

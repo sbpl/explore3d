@@ -89,25 +89,29 @@ bool ExplorationPlanner::bresenham_line_3D(int x1, int y1, int z1, int x2, int y
   return true;
 }
 
-void ExplorationPlanner::raycast3d(SearchPts_c start, int robotnum) {
-  //multi-thread the casting to different points
- // printf("unk loc x%i y%i z%i\n", start.x, start.y, start.z);
-  for(size_t pidx=0; pidx<VisibilityRings_[robotnum][start.z].size(); pidx++) {
-	int x, y, z;
-	x = VisibilityRings_[robotnum][start.z][pidx].x + start.x;
-	y = VisibilityRings_[robotnum][start.z][pidx].y + start.y;
-	z = robots_[robotnum].SensorHeight_;
-//	printf("x%i y%i z%i", x, y, z);
-	if (coverage_.Getval(x,y,z) == FREESPACE) {
-	 // printf(" Free");
-	  bool result = bresenham_line_3D(start.x, start.y, start.z, x, y, z);
-	  if (result) {
-		//	printf("r%i x%i y%i z%i p%i a%i c%i", robotnum, x, y, start.z, pidx, VisibilityRings_[robotnum][start.z][pidx].angle, counts_[robotnum][x][y][VisibilityRings_[robotnum][start.z][pidx].theta]);
-	counts_[robotnum](x, y, VisibilityRings_[robotnum][start.z][pidx].theta)++;
-	  }
-	}
-//	printf("\n");
-  }
+void ExplorationPlanner::raycast3d(SearchPts_c start, int robotnum)
+{
+    // multi-thread the casting to different points
+    // printf("unk loc x%i y%i z%i\n", start.x, start.y, start.z);
+    for (size_t pidx = 0; pidx < VisibilityRings_[robotnum][start.z].size(); pidx++) {
+        int x, y, z;
+        x = VisibilityRings_[robotnum][start.z][pidx].x + start.x;
+        y = VisibilityRings_[robotnum][start.z][pidx].y + start.y;
+        z = robots_[robotnum].SensorHeight_;
+        // printf("x%i y%i z%i", x, y, z);
+        if (coverage_.Getval(x, y, z) == FREESPACE) {
+            // printf(" Free");
+            bool result = bresenham_line_3D(start.x, start.y, start.z, x, y, z);
+            if (result) {
+                // printf("r%i x%i y%i z%i p%i a%i c%i",
+                // robotnum, x, y, start.z, pidx,
+                // VisibilityRings_[robotnum][start.z][pidx].angle,
+                // counts_[robotnum][x][y][VisibilityRings_[robotnum][start.z][pidx].theta]);
+                counts_[robotnum](x, y, VisibilityRings_[robotnum][start.z][pidx].theta) += 1.0;
+            }
+        }
+        // printf("\n");
+    }
 }
 
 

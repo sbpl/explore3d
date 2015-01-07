@@ -4,6 +4,7 @@
 
 #include "exploration_main.hpp"
 
+#include <cassert>
 #include <unordered_map>
 
 #if PCL_MINOR_VERSION == 6 and PCL_MAJOR_VERSION == 1
@@ -41,7 +42,13 @@ void EP_wrapper::plannerthread(void)
 
         //retrieve goals
         ROS_INFO("get goals, start");
+        for (size_t ridx = 0; ridx < robot_loc.size(); ridx++) {
+            ROS_INFO("poses r%li X%i Y%i Z%i a%i", ridx, robot_loc[ridx].x, robot_loc[ridx].y, robot_loc[ridx].z, robot_loc[ridx].theta);
+        }
         std::vector<Locations_c> goals = EP.NewGoals(robot_loc);
+        for (size_t ridx = 0; ridx < goals.size(); ridx++) {
+            ROS_INFO("goals r%li X%i Y%i Z%i a%i", ridx, goals[ridx].x, goals[ridx].y, goals[ridx].z, goals[ridx].theta);
+        }
         ROS_INFO("get goals, done");
 
         publish_goal_list(goals);
@@ -208,16 +215,21 @@ bool EP_wrapper::init(void)
     Goal_pub_ = nh.advertise<nav_msgs::Path>(goal_topic_, 1);
     Goal_point_cloud_pub = nh.advertise<pcl::PointCloud<pcl::PointXYZI>>(goal_point_cloud_topic, 1);
 
-    coverage_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("coverage_map", 1);
+//    coverage_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("coverage_map", 1);
     frontier_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("frontier_map", 1);
 
     cost_map_pub.reserve(params.robots.size());
     counts_map_pub.reserve(params.robots.size());
+    score_map_pub.reserve(params.robots.size());
     for (const Robot_c& robot : params.robots) {
         ros::Publisher robot_costmap_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_cost_map", 1);
         ros::Publisher robot_counts_map_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_counts_map", 1);
+        ros::Publisher robot_coverage_map_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_coverage_map", 1);
+        ros::Publisher robot_score_map_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_score_map", 1);
+        coverage_map_pub_.push_back(robot_coverage_map_pub);
         cost_map_pub.push_back(robot_costmap_pub);
         counts_map_pub.push_back(robot_counts_map_pub);
+        score_map_pub.push_back(robot_score_map_pub);
     }
 
     return true;
@@ -362,44 +374,76 @@ void EP_wrapper::publish_point_cloud(const std::vector<pcl::PointXYZI>& points, 
 
 void EP_wrapper::publish_planner_maps()
 {
-    ROS_INFO("publishing maps....");
+    ROS_WARN("publishing maps....");
 
     ros::Time now = ros::Time::now();
-
-    std::vector<std::vector<std::vector<char>>> map_as_vectors;
-    const auto& grid = EP.coverage_.map_;
-
-    // TODO: remove terrible copying here
-    map_as_vectors.resize(grid.size(0));
-    for (int x = 0; x < grid.size(0); ++x) {
-        map_as_vectors[x].resize(grid.size(1));
-        for (int y = 0; y < grid.size(1); ++y) {
-            map_as_vectors[x][y].resize(grid.size(2));
-            for (int z = 0; z < grid.size(2); ++z) {
-                map_as_vectors[x][y][z] = grid(x, y, z);
-            }
-        }
-    }
-
-    std::vector<pcl::PointXYZI> coverage_points;
-    get_point_cloud_from_map(map_as_vectors, coverage_points);
-    publish_point_cloud(coverage_points, coverage_map_pub);
 
     std::vector<pcl::PointXYZI> frontier_points;
     get_point_cloud_from_points(EP.Frontier3d_, frontier_points);
     publish_point_cloud(frontier_points, frontier_map_pub);
 
+    const auto& grid = EP.coverage_.map_;
     for (std::size_t i = 0; i < params.robots.size(); ++i) {
-        nav_msgs::OccupancyGrid grid;
-        get_occupancy_grid_from_costmap(EP.CostToPts_.at(i), now, grid);
-        cost_map_pub.at(i).publish(grid);
+        ROS_INFO("Publishing maps for robot %zd", i);
+        nav_msgs::OccupancyGrid motion_height_grid;
+        this->get_occupancy_grid_from_map_at_height(grid, now, motion_height_grid, params.robots[i].MotionHeight_);
+        coverage_map_pub_.at(i).publish(motion_height_grid);
 
+        ROS_INFO("  Publishing costmap...");
+        nav_msgs::OccupancyGrid costmap_grid;
+        this->get_occupancy_grid_from_costmap(EP.CostToPts_.at(i), now, costmap_grid);
+        cost_map_pub.at(i).publish(costmap_grid);
+
+        ROS_INFO("  Publishing countmap...");
         nav_msgs::OccupancyGrid count_grid;
         get_occupancy_grid_from_countmap(EP.counts_.at(i), now, count_grid);
         counts_map_pub.at(i).publish(count_grid);
+
+        ROS_INFO("  Publishing scoremap");
+        nav_msgs::OccupancyGrid score_grid;
+        get_occupancy_grid_from_countmap(EP.scores_.at(i), now, score_grid);
+        score_map_pub.at(i).publish(score_grid);
     }
 
     ROS_INFO("done");
+}
+
+void EP_wrapper::get_occupancy_grid_from_map_at_height(
+    const ExplorationPlanner::Map& epmap,
+    const ros::Time& time,
+    nav_msgs::OccupancyGrid& map,
+    uint height)
+{
+    assert(epmap.size(0) == size_x && epmap.size(1) == size_y);
+
+    map.header.frame_id = frame_id;
+    map.header.stamp = time;
+
+    map.info.width = size_x;
+    map.info.height = size_y;
+    map.info.origin.position.x = origin_x;
+    map.info.origin.position.y = origin_y;
+    map.info.origin.position.z = origin_z;
+    map.info.resolution = resolution;
+    map.data.resize(size_x * size_y);
+
+    for (std::size_t x = 0; x < epmap.size(0); ++x) {
+        for (std::size_t y = 0; y < epmap.size(1); ++y) {
+            char val = epmap(x, y, height);
+            if (val == params.unk) {
+                map.data[y * size_x + x] = -1;
+            }
+            else if (val == params.freespace) {
+                map.data[y * size_x + x] = 0;
+            }
+            else if (val == params.obs) {
+                map.data[y * size_x + x] = 100;
+            }
+            else {
+                ROS_ERROR("Unexpected 3-D map value");
+            }
+        }
+    }
 }
 
 void EP_wrapper::get_occupancy_grid_from_costmap(
@@ -452,13 +496,8 @@ void EP_wrapper::get_occupancy_grid_from_costmap(
         }
     }
 
-    ROS_INFO("Cost Histogram:");
-    for (const auto& entry : cost_histogram) {
-        ROS_INFO("  %0.3f: %d", entry.first, entry.second);
-    }
-
     double span = max_cost - min_cost;
-    ROS_INFO("Costs span %0.3f (min: %0.3f, max: %0.3f)", span, min_cost, max_cost);
+    ROS_INFO("    Costs span %0.3f (min: %0.3f, max: %0.3f)", span, min_cost, max_cost);
 
     for (std::size_t x = 0; x < costmap.size(0); ++x) {
         for (std::size_t y = 0; y < costmap.size(1); ++y) {
@@ -494,7 +533,7 @@ void EP_wrapper::get_occupancy_grid_from_countmap(
     for (std::size_t x = 0; x < countmap.size(0); ++x) {
         for (std::size_t y = 0; y < countmap.size(1); ++y) {
             for (std::size_t a = 0; a < countmap.size(2); ++a) {
-                costmap(x, y) += countmap(x, y, a);
+                costmap(x, y) += std::max(costmap(x, y), countmap(x, y, a)); //countmap(x, y, a);
             }
         }
     }
