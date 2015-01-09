@@ -27,8 +27,8 @@ pose_topic: /robot_poses
 robot_params: [
     {
         name: "segbot",
-        motionheight: 0.0,
-        sensorheight: 0.5,
+        motionheight: 0.32,
+        sensorheight: 0.32,
         horizontalfov_degs: 22.5,
         verticalfov_degs: 18.0,
         detectionrange: 5.0,
