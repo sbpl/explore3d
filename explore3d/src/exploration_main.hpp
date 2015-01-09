@@ -56,6 +56,7 @@ private:
     ros::Publisher frontier_map_pub;
 
     std::vector<ros::Publisher> coverage_map_pub_;
+    std::vector<ros::Publisher> dist_transform_pub_;
     std::vector<ros::Publisher> cost_map_pub;
     std::vector<ros::Publisher> counts_map_pub;
     std::vector<ros::Publisher> score_map_pub;
@@ -99,6 +100,12 @@ private:
     void get_occupancy_grid_from_countmap(
             const ExplorationPlanner::CountMap& countmap,
             const ros::Time& time,
+            nav_msgs::OccupancyGrid& map) const;
+
+    void get_occupancy_grid_from_distance_transform(
+            const CoverageMap_c& coverage_map,
+            int ridx,
+            const ros::Time& now,
             nav_msgs::OccupancyGrid& map) const;
 
     template<typename T>

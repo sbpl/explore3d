@@ -77,7 +77,7 @@ void CoverageMap_c::UpdateDistances()
 
         for (int xidx = x_size_ - 1; xidx >= 0; xidx--) {
             for (int yidx = y_size_ - 1; yidx >= 0; yidx--) {
-                if (xidx == x_size_ - 1 || yidx == y_size_ - 1 || map_(xidx, yidx, zz) == OBS) {
+                if (xidx == (int)x_size_ - 1 || yidx == (int)y_size_ - 1 || map_(xidx, yidx, zz) == OBS) {
                     DistToObs_[ridx](xidx, yidx) = 0;
                 }
                 else {

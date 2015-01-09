@@ -1,6 +1,8 @@
-frame_id: /map
 planner_rate: 0.5
+scale: 20.0
+
 #map params
+frame_id: /map
 size_x: 1200
 size_y: 700
 size_z: 50
@@ -9,11 +11,6 @@ origin_y: -12.025
 origin_z: 0.0
 resolution: 0.10
 
-#topic name params
-goal_topic: /robot_goals
-map_topic: /merged_map 
-pose_topic: /robot_poses
-
 #cost params
 #objectmaxelev: 
 #obsvalue: 
@@ -21,6 +18,11 @@ pose_topic: /robot_poses
 #unkvalue: 
 #numangles:
 #mindist: 
+
+#topic name params
+goal_topic: /robot_goals
+map_topic: /merged_map 
+pose_topic: /robot_poses
 
 robot_params: [
     {

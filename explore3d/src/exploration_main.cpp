@@ -143,6 +143,62 @@ bool EP_wrapper::init(void)
     ph.param("planner_rate", planner_rate, 0.5);
     ph.param("scale", scale, 20.0);
 
+    got_first_map_update = false;
+    got_first_pose_update = false;
+
+    //////////////////////////////////////////////////////////////////////
+    // Read in map parameters
+    //////////////////////////////////////////////////////////////////////
+
+    ph.param<std::string>("frame_id", frame_id, "/map");
+    ph.param<int>("size_x", size_x, 500);
+    ph.param<int>("size_y", size_y, 500);
+    ph.param<int>("size_z", size_z, 50);
+    ph.param<double>("origin_x", origin_x, 0);
+    ph.param<double>("origin_y", origin_y, 0);
+    ph.param<double>("origin_z", origin_z, 0);
+    ph.param<double>("resolution", resolution, 0.5);
+
+    params.size_x = size_x;
+    params.size_y = size_y;
+    params.size_z = size_z;
+
+    //////////////////////////////////////////////////////////////////////
+    // Read in cost parameters
+    //////////////////////////////////////////////////////////////////////
+
+    int objectmaxelev, obs, freespace, unk, numangles, mindist;
+    ph.param<int>("objectmaxelev", objectmaxelev, (uint) 1.5 * scale); // max height to consider for the OOI (cells)
+    ph.param<int>("obsvalue", obs, 100); // values for obstacles, freespace, unknown
+    ph.param<int>("freevalue", freespace, 50);
+    ph.param<int>("unkvalue", unk, 0);
+    ph.param<int>("numangles", numangles, 16); // number of thetas
+    ph.param<int>("mindist", mindist, (uint) 1.2 * scale); // closest robots should operate without penalty (cells)
+
+    params.ObjectMaxElev = objectmaxelev;
+    params.obs = obs;
+    params.freespace = freespace;
+    params.unk = unk;
+    params.NumAngles = numangles;
+    params.MinDist = mindist;
+
+    angle_resolution = (2 * M_PI) / numangles;
+
+    //////////////////////////////////////////////////////////////////////
+    // Read in topic name parameters
+    //////////////////////////////////////////////////////////////////////
+
+    ph.param<std::string>("goal_topic", goal_topic_, "goal_list");
+    ph.param<std::string>("map_topic", map_topic_, "combined_map");
+    ph.param<std::string>("pose_topic", pose_topic_, "combined_pose");
+    ph.param<std::string>("goal_point_cloud_topic", goal_point_cloud_topic, "goal_point_cloud");
+
+    //////////////////////////////////////////////////////////////////////
+    // Read in robot parameters.
+    //////////////////////////////////////////////////////////////////////
+
+    // NOTE: robot parameters must be read after the map parameters
+
     XmlRpc::XmlRpcValue robot_params;
     ph.getParam("robot_params", robot_params);
     if (robot_params.getType() != XmlRpc::XmlRpcValue::TypeArray) {
@@ -167,42 +223,6 @@ bool EP_wrapper::init(void)
 
     this->log_robots(params.robots);
 
-    got_first_map_update = false;
-    got_first_pose_update = false;
-
-    int objectmaxelev, obs, freespace, unk, numangles, mindist;
-    ph.param<std::string>("frame_id", frame_id, "/map");
-    ph.param<int>("size_x", size_x, 500);
-    params.size_x = size_x;
-    ph.param<int>("size_y", size_y, 500);
-    params.size_y = size_y;
-    ph.param<int>("size_z", size_z, 50);
-    params.size_z = size_z;
-    ph.param<double>("origin_x", origin_x, 0);
-    ph.param<double>("origin_y", origin_y, 0);
-    ph.param<double>("origin_z", origin_z, 0);
-    ph.param<double>("resolution", resolution, 0.5);
-
-    ph.param<int>("objectmaxelev", objectmaxelev, (uint) 1.5 * scale); // max height to consider for the OOI (cells)
-    params.ObjectMaxElev = objectmaxelev;
-    ph.param<int>("obsvalue", obs, 100); // values for obstacles, freespace, unknown
-    params.obs = obs;
-    ph.param<int>("freevalue", freespace, 50);
-    params.freespace = freespace;
-    ph.param<int>("unkvalue", unk, 0);
-    params.unk = unk;
-    ph.param<int>("numangles", numangles, 16); // number of thetas
-    params.NumAngles = numangles;
-    ph.param<int>("mindist", mindist, (uint) 1.2 * scale); // closest robots should operate without penalty (cells)
-    params.MinDist = mindist;
-
-    angle_resolution = (2 * M_PI) / numangles;
-
-    ph.param<std::string>("goal_topic", goal_topic_, "goal_list");
-    ph.param<std::string>("map_topic", map_topic_, "combined_map");
-    ph.param<std::string>("pose_topic", pose_topic_, "combined_pose");
-    ph.param<std::string>("goal_point_cloud_topic", goal_point_cloud_topic, "goal_point_cloud");
-
     EP.Init(params);
     EP_thread_ = new std::thread(&EP_wrapper::plannerthread, this);
 
@@ -223,10 +243,12 @@ bool EP_wrapper::init(void)
     score_map_pub.reserve(params.robots.size());
     for (const Robot_c& robot : params.robots) {
         ros::Publisher robot_costmap_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_cost_map", 1);
+        ros::Publisher dist_transform_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_dist_transform", 1);
         ros::Publisher robot_counts_map_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_counts_map", 1);
         ros::Publisher robot_coverage_map_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_coverage_map", 1);
         ros::Publisher robot_score_map_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_score_map", 1);
         coverage_map_pub_.push_back(robot_coverage_map_pub);
+        dist_transform_pub_.push_back(dist_transform_pub);
         cost_map_pub.push_back(robot_costmap_pub);
         counts_map_pub.push_back(robot_counts_map_pub);
         score_map_pub.push_back(robot_score_map_pub);
@@ -389,6 +411,11 @@ void EP_wrapper::publish_planner_maps()
         this->get_occupancy_grid_from_map_at_height(grid, now, motion_height_grid, params.robots[i].MotionHeight_);
         coverage_map_pub_.at(i).publish(motion_height_grid);
 
+        nav_msgs::OccupancyGrid distance_transform_grid;
+        const auto& coverage_map = EP.coverage_;
+        this->get_occupancy_grid_from_distance_transform(coverage_map, i, now, distance_transform_grid);
+        dist_transform_pub_.at(i).publish(distance_transform_grid);
+
         ROS_INFO("  Publishing costmap...");
         nav_msgs::OccupancyGrid costmap_grid;
         this->get_occupancy_grid_from_costmap(EP.CostToPts_.at(i), now, costmap_grid);
@@ -430,13 +457,13 @@ void EP_wrapper::get_occupancy_grid_from_map_at_height(
     for (std::size_t x = 0; x < epmap.size(0); ++x) {
         for (std::size_t y = 0; y < epmap.size(1); ++y) {
             char val = epmap(x, y, height);
-            if (val == params.unk) {
+            if ((unsigned char)val == params.unk) {
                 map.data[y * size_x + x] = -1;
             }
-            else if (val == params.freespace) {
+            else if ((unsigned char)val == params.freespace) {
                 map.data[y * size_x + x] = 0;
             }
-            else if (val == params.obs) {
+            else if ((unsigned char)val == params.obs) {
                 map.data[y * size_x + x] = 100;
             }
             else {
@@ -541,6 +568,30 @@ void EP_wrapper::get_occupancy_grid_from_countmap(
     return this->get_occupancy_grid_from_costmap(costmap, time, map);
 }
 
+void EP_wrapper::get_occupancy_grid_from_distance_transform(
+    const CoverageMap_c& coverage_map,
+    int ridx,
+    const ros::Time& now,
+    nav_msgs::OccupancyGrid& map) const
+{
+    // TODO: implement
+    ExplorationPlanner::CostMap dist_transform;
+    dist_transform.resize(coverage_map.x_size_, coverage_map.y_size_);
+    for (std::size_t x = 0; x < coverage_map.x_size_; ++x) {
+        for (std::size_t y = 0; y < coverage_map.y_size_; ++y) {
+            double dval = coverage_map.ReturnDistToObs(ridx, x, y);
+            dist_transform(x, y) = dval;
+        }
+    }
+
+    this->get_occupancy_grid_from_costmap(dist_transform, now, map);
+
+    // invert map values
+    for (auto& datum : map.data) {
+        datum = 100 - datum;
+    }
+}
+
 template<typename T>
 void EP_wrapper::get_point_cloud_from_map(const std::vector<T> &map, std::vector<pcl::PointXYZI> & points)
 {
@@ -635,10 +686,10 @@ bool EP_wrapper::create_robot_from_config(XmlRpc::XmlRpcValue& params, double sc
     robot.VerticalFOV_ *= M_PI / 180.0;
 
     robot.name = std::string(params["name"]);
-    robot.MotionHeight_     = (uint)robot_motionheight;
-    robot.SensorHeight_     = (uint)robot_sensorheight;
-    robot.DetectionRange_   = (uint)robot_detectionrange;
-    robot.CircularSize_     = (uint)robot_circularsize;
+    robot.MotionHeight_     = (uint)(robot_motionheight / resolution);
+    robot.SensorHeight_     = (uint)(robot_sensorheight / resolution);
+    robot.DetectionRange_   = (uint)(robot_detectionrange);
+    robot.CircularSize_     = (uint)(robot_circularsize);
 
     return true;
 }

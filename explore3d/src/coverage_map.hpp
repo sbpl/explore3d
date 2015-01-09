@@ -32,7 +32,7 @@ public:
             std::vector<Robot_c>* RobotPtr);
 
     /// @brief Return whether the cell (\x, \y, \z) is within the map boundaries.
-    bool OnMap(int x, int y, int z)
+    bool OnMap(int x, int y, int z) const
     {
         return (x < (int)x_size_ && y < (int)y_size_ && z < (int)z_size_ && x >= 0 && y >= 0 && z >= 0);
     }
@@ -67,7 +67,7 @@ public:
     }
 
     /// @brief Return the distance to the nearest obstacle, in cells, from cell (\x, \y) or -1 if the cell is off the map.
-    double ReturnDistToObs(int rn, int x, int y)
+    double ReturnDistToObs(int rn, int x, int y) const
     {
         if (OnMap(x,y,0)) {
             return (double)DistToObs_[rn](x, y) / 100.0;

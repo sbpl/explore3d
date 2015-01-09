@@ -85,7 +85,7 @@ void ExplorationPlanner::GenVisibilityRing(void)
             if (radius < 2) {
                 radius = 2;
             }
-            // printf("robot %i height=%f radius = %f\n", ridx, height, radius);
+            printf("robot %i height=%f radius = %f\n", ridx, height, radius);
             if (radius < robots_[ridx].DetectionRange_) {
                 pts2d temp_pt;
                 for (double aidx = 0; aidx < 2 * M_PI; aidx += 0.01) {
@@ -96,13 +96,15 @@ void ExplorationPlanner::GenVisibilityRing(void)
                         tangle += 2 * M_PI;
                     }
                     temp_pt.theta = (int) (tangle * (double) NumAngles_ / (2 * M_PI));
-                    // printf("r%i z%i x%i y%i a%i\n", ridx, zidx, temp_pt.x, temp_pt.y, temp_pt.theta);
                     VisibilityRings_[ridx][zidx].push_back(temp_pt);
                 }
                 std::sort(VisibilityRings_[ridx][zidx].begin(), VisibilityRings_[ridx][zidx].end(), ptssort);
                 std::vector<pts2d>::iterator it;
                 it = std::unique(VisibilityRings_[ridx][zidx].begin(), VisibilityRings_[ridx][zidx].end(), ptscompare);
                 VisibilityRings_[ridx][zidx].resize(std::distance(VisibilityRings_[ridx][zidx].begin(), it));
+                for (const auto& ring : VisibilityRings_[ridx][zidx]) {
+                    printf("r%i z%i x%i y%i a%i\n", ridx, zidx, ring.x, ring.y, ring.theta);
+                }
             }
         }
     }
