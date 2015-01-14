@@ -43,6 +43,8 @@ void ExplorationPlanner::Init(ExpParams_c initparams)
     robots_ = initparams.robots;
     coverage_.Init(initparams.size_x, initparams.size_y, initparams.size_z, FREESPACE, UNK, OBS, &robots_);
 
+    backwards_penalty_ = initparams.backwards_penalty;
+
     CostToPts_.resize(robots_.size());
     counts_.resize(robots_.size());
     scores_.resize(robots_.size());
@@ -226,8 +228,6 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
     CKey startkey = CreateKey(start_state.cost());
     OPEN.insertheap(&start_state, startkey);
 
-    ROS_INFO("Seeded search with state %s", to_string(start_state.search_pt()).c_str());
-
     auto compute_motion_penalty = [&](const SearchPtState& s, const SearchPtState& t)
     {
         // Capture a bunch of hacky rules about traversal costs between states
@@ -236,17 +236,14 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
         double end_theta = atan2((double)dy, (double)dx);
         double start_theta = DiscTheta2Cont(start.theta, NumAngles_);
         double angle_diff = computeMinUnsignedAngleDiff(end_theta, start_theta);
-        const double arbitrary_backwards_cost_inflation = 10.0;
-        double backwards_penalty = arbitrary_backwards_cost_inflation * angle_diff;
+        double final_backwards_penalty = backwards_penalty_ * angle_diff / M_PI;
 
-        return std::max(backwards_penalty / M_PI, 1.0);
+        return std::max(final_backwards_penalty, 1.0);
     };
 
-    int num_expansions = 0;
     while (!OPEN.emptyheap()) {
         SearchPtState* curr = (SearchPtState*)OPEN.deleteminheap();
         curr->set_closed(true);
-        ++num_expansions;
 
         for (size_t midx = 0; midx < mp_.size(); midx++) {
             SearchPtState& succ = states(curr->x() + mp_[midx].x, curr->y() + mp_[midx].y);
@@ -276,8 +273,6 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
             }
         }
     }
-
-    ROS_INFO("Num Expansions = %d", num_expansions);
 
     // copy over costmap
     CostMap& costmap = CostToPts_[robotnum];

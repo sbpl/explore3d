@@ -18,6 +18,7 @@ resolution: 0.10
 #unkvalue: 
 #numangles:
 #mindist: 
+backwards_penalty: 10.0
 
 #topic name params
 goal_topic: /robot_goals

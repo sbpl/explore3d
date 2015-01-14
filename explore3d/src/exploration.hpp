@@ -24,6 +24,11 @@ public:
     uint obs, freespace, unk;
     uint NumAngles;
     uint MinDist;
+
+    /// @name Cost Function Parameters
+    /// @{
+    double backwards_penalty;
+    /// @}
 };
 
 class ExplorationPlanner
@@ -39,6 +44,7 @@ public:
     uint ObjectMaxElev_, NumAngles_;
     unsigned char FREESPACE, OBS, UNK;
     uint MinDist_;
+    double backwards_penalty_;
 
     std::vector<SearchPts_c> mp_;                                       //motion primitives
     std::vector<CostMap> CostToPts_;                                    //[robot](x, y)

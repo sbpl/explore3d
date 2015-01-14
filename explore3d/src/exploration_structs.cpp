@@ -28,6 +28,13 @@ bool ptssort(const pts2d & pt1, const pts2d & pt2)
         return false;
 }
 
+std::string to_string(const Locations_c& l)
+{
+    std::stringstream ss;
+    ss << "{ X" << l.x << " Y" << l.y << " Z" << l.z << " a" << l.theta << " }";
+    return ss.str();
+}
+
 std::string to_string(const SearchPts_c& p)
 {
     std::stringstream ss;

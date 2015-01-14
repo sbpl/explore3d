@@ -5,6 +5,7 @@
 #include "exploration_main.hpp"
 
 #include <cassert>
+#include <chrono>
 #include <unordered_map>
 
 #if PCL_MINOR_VERSION == 6 and PCL_MAJOR_VERSION == 1
@@ -21,7 +22,6 @@ void EP_wrapper::plannerthread(void)
     std::vector<Locations_c> robot_loc;
 
     while (ros::ok()) {
-
         looprate.sleep();
 
         //do not execute planner until first map and pose updates are received
@@ -30,34 +30,38 @@ void EP_wrapper::plannerthread(void)
             continue;
         }
 
+        std::chrono::time_point<std::chrono::high_resolution_clock> start, finish;
+
         //update map and poses
-        std::unique_lock<std::mutex> data_lock(data_mutex_);
-        ROS_INFO("update map and poses, start");
+        ROS_DEBUG("Updating map and poses...");
+        start = std::chrono::high_resolution_clock::now();
+        data_mutex_.lock();
         pts = MapPts_;
         robot_loc = CurrentLocations_;
-        data_lock.unlock();
+        data_mutex_.unlock();
+        finish = std::chrono::high_resolution_clock::now();
+        ROS_DEBUG("Updating map and poses took %0.3f seconds", std::chrono::duration<double>(finish - start).count());
+
         EP.PartialUpdateMap(pts);
 
-        ROS_INFO("update map and poses, done");
-
         //retrieve goals
-        ROS_INFO("get goals, start");
+        ROS_INFO("Computing goals...");
+        start = std::chrono::high_resolution_clock::now();
         for (size_t ridx = 0; ridx < robot_loc.size(); ridx++) {
-            ROS_INFO("poses r%li X%i Y%i Z%i a%i", ridx, robot_loc[ridx].x, robot_loc[ridx].y, robot_loc[ridx].z, robot_loc[ridx].theta);
+            ROS_INFO("poses r%li: %s", ridx, to_string(robot_loc[ridx]).c_str());
         }
         std::vector<Locations_c> goals = EP.NewGoals(robot_loc);
         for (size_t ridx = 0; ridx < goals.size(); ridx++) {
-            ROS_INFO("goals r%li X%i Y%i Z%i a%i", ridx, goals[ridx].x, goals[ridx].y, goals[ridx].z, goals[ridx].theta);
+            ROS_INFO("goals r%li: %s", ridx, to_string(goals[ridx]).c_str());
         }
-        ROS_INFO("get goals, done");
+        finish = std::chrono::high_resolution_clock::now();
+        ROS_INFO("Computing goals took %0.3f seconds", std::chrono::duration<double>(finish - start).count());
 
         publish_goal_list(goals);
-
         publish_planner_maps();
 
         //clear the map points
         MapPts_.clear();
-
     }
 }
 
@@ -115,7 +119,7 @@ void EP_wrapper::PoseCallback(const nav_msgs::PathConstPtr& msg)
 
 void EP_wrapper::MapCallback(const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& msg)
 {
-    ROS_INFO("map upate callback for seq %d", (int ) msg->header.seq);
+    ROS_DEBUG("map upate callback for seq %d", (int ) msg->header.seq);
     std::unique_lock<std::mutex> data_lock(data_mutex_);
     //TODO: this is inefficient
     MapElement_c pt;
@@ -134,8 +138,8 @@ void EP_wrapper::MapCallback(const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& ms
         MapPts_.push_back(pt);
     }
     data_lock.unlock();
-    ROS_INFO("map upate callback finished");
     got_first_map_update = true;
+    ROS_DEBUG("map upate callback finished");
 }
 
 bool EP_wrapper::init(void)
@@ -168,12 +172,14 @@ bool EP_wrapper::init(void)
     //////////////////////////////////////////////////////////////////////
 
     int objectmaxelev, obs, freespace, unk, numangles, mindist;
+    double backwards_penalty;
     ph.param<int>("objectmaxelev", objectmaxelev, (uint) 1.5 * scale); // max height to consider for the OOI (cells)
     ph.param<int>("obsvalue", obs, 100); // values for obstacles, freespace, unknown
     ph.param<int>("freevalue", freespace, 50);
     ph.param<int>("unkvalue", unk, 0);
     ph.param<int>("numangles", numangles, 16); // number of thetas
     ph.param<int>("mindist", mindist, (uint) 1.2 * scale); // closest robots should operate without penalty (cells)
+    ph.param<double>("backwards_penalty", backwards_penalty, 1.0);
 
     params.ObjectMaxElev = objectmaxelev;
     params.obs = obs;
@@ -181,6 +187,7 @@ bool EP_wrapper::init(void)
     params.unk = unk;
     params.NumAngles = numangles;
     params.MinDist = mindist;
+    params.backwards_penalty = backwards_penalty;
 
     angle_resolution = (2 * M_PI) / numangles;
 
@@ -271,7 +278,10 @@ EP_wrapper::EP_wrapper() :
 
 EP_wrapper::~EP_wrapper()
 {
-	EP_thread_->join();
+    if (EP_thread_ && EP_thread_->joinable()) {
+        EP_thread_->join();
+        delete EP_thread_;
+    }
 }
 
 template<typename T>
@@ -397,7 +407,7 @@ void EP_wrapper::publish_point_cloud(const std::vector<pcl::PointXYZI>& points, 
 
 void EP_wrapper::publish_planner_maps()
 {
-    ROS_WARN("publishing maps....");
+    ROS_DEBUG("publishing maps....");
 
     ros::Time now = ros::Time::now();
 
@@ -407,7 +417,7 @@ void EP_wrapper::publish_planner_maps()
 
     const auto& grid = EP.coverage_.map_;
     for (std::size_t i = 0; i < params.robots.size(); ++i) {
-        ROS_INFO("Publishing maps for robot %zd", i);
+        ROS_DEBUG("Publishing maps for robot %zd", i);
         nav_msgs::OccupancyGrid motion_height_grid;
         this->get_occupancy_grid_from_map_at_height(grid, now, motion_height_grid, params.robots[i].MotionHeight_);
         coverage_map_pub_.at(i).publish(motion_height_grid);
@@ -417,23 +427,23 @@ void EP_wrapper::publish_planner_maps()
         this->get_occupancy_grid_from_distance_transform(coverage_map, i, now, distance_transform_grid);
         dist_transform_pub_.at(i).publish(distance_transform_grid);
 
-        ROS_INFO("  Publishing costmap...");
+        ROS_DEBUG("  Publishing costmap...");
         nav_msgs::OccupancyGrid costmap_grid;
         this->get_occupancy_grid_from_costmap(EP.CostToPts_.at(i), now, costmap_grid);
         cost_map_pub.at(i).publish(costmap_grid);
 
-        ROS_INFO("  Publishing countmap...");
+        ROS_DEBUG("  Publishing countmap...");
         nav_msgs::OccupancyGrid count_grid;
         get_occupancy_grid_from_countmap(EP.counts_.at(i), now, count_grid);
         counts_map_pub.at(i).publish(count_grid);
 
-        ROS_INFO("  Publishing scoremap");
+        ROS_DEBUG("  Publishing scoremap");
         nav_msgs::OccupancyGrid score_grid;
         get_occupancy_grid_from_countmap(EP.scores_.at(i), now, score_grid);
         score_map_pub.at(i).publish(score_grid);
     }
 
-    ROS_INFO("done");
+    ROS_DEBUG("done");
 }
 
 void EP_wrapper::get_occupancy_grid_from_map_at_height(
@@ -525,7 +535,7 @@ void EP_wrapper::get_occupancy_grid_from_costmap(
     }
 
     double span = max_cost - min_cost;
-    ROS_INFO("    Costs span %0.3f (min: %0.3f, max: %0.3f)", span, min_cost, max_cost);
+    ROS_DEBUG("    Costs span %0.3f (min: %0.3f, max: %0.3f)", span, min_cost, max_cost);
 
     for (std::size_t x = 0; x < costmap.size(0); ++x) {
         for (std::size_t y = 0; y < costmap.size(1); ++y) {

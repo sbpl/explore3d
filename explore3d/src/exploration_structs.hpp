@@ -56,8 +56,6 @@ public:
   //friend bool comparepts (const SearchPts_c & pt1, const SearchPts_c & pt2);
 };
 
-std::string to_string(const SearchPts_c& p);
-
 class SPCompare
 {
 public:
@@ -79,5 +77,8 @@ public:
   uint CircularSize_;
   std::string name;
 };
+
+std::string to_string(const Locations_c& l);
+std::string to_string(const SearchPts_c& p);
 
 #endif
