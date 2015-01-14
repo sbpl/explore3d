@@ -35,4 +35,5 @@ rosbuild_add_executable(
     src/exploration_main.cpp
     src/exploration_structs.cpp
     src/coverage_map.cpp)
+target_link_libraries(explore3d sbpl)
 #target_link_libraries(example ${PROJECT_NAME})

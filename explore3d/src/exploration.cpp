@@ -27,6 +27,8 @@
 // if not
 // go to closest
 
+#include <ros/console.h>
+#include <sbpl/utils/heap.h>
 #include "Grid.h"
 
 void ExplorationPlanner::Init(ExpParams_c initparams)
@@ -168,51 +170,108 @@ void ExplorationPlanner::printCounts(uint x0, uint y0, uint x1, uint y1, uint rn
 
 void ExplorationPlanner::Dijkstra(Locations_c start, int robotnum)
 {
-    std::priority_queue<SearchPts_c, std::vector<SearchPts_c>, SPCompare> OPEN;
+    struct SearchPtState : public AbstractSearchState
+    {
+    public:
 
-    au::Grid<2, bool> CLOSED;
-    CLOSED.resize(coverage_.x_size_, coverage_.y_size_);
-    CLOSED.assign(false);
+        SearchPtState() : AbstractSearchState(), search_pt_(), closed_(false)
+        { heapindex = 0; search_pt_.theta = 0; search_pt_.cost = MaxCost; }
 
-    SearchPts_c current, temp;
+        int x() const { return search_pt_.x; }
+        int y() const { return search_pt_.y; }
+        int z() const { return search_pt_.z; }
+        CostType cost() const { return search_pt_.cost; }
+        bool closed() const { return closed_; }
 
-    for (uint xidx = 0; xidx < coverage_.x_size_; xidx++) {
-        for (uint yidx = 0; yidx < coverage_.y_size_; yidx++) {
-            CostToPts_[robotnum](xidx, yidx) = MaxCost;
+        void set_x(int x) { search_pt_.x = x; }
+        void set_y(int y) { search_pt_.y = y; }
+        void set_z(int z) { search_pt_.z = z; }
+        void set_cost(CostType cost) { search_pt_.cost = cost; }
+        void set_closed(bool closed) { closed_ = closed; }
+
+        const SearchPts_c& search_pt() const { return search_pt_; }
+
+    private:
+
+        SearchPts_c search_pt_;
+        bool closed_;
+    };
+
+    // Create search state table
+    au::Grid<2, SearchPtState> states(coverage_.x_size_, coverage_.y_size_);
+    for (std::size_t x = 0; x < states.size(0); ++x) {
+        for (std::size_t y = 0; y < states.size(1); ++y) {
+            states(x, y).set_x(x);
+            states(x, y).set_y(y);
+            states(x, y).set_z(start.z);
+            states(x, y).set_cost(MaxCost);
+            states(x, y).set_closed(false);
         }
     }
 
-    int robot_size = robots_[robotnum].CircularSize_;
+    auto CreateKey = [](double val) -> CKey
+    {
+        const int fpscale = 1000;
+        CKey key;
+        key.key[0] = fpscale * val;
+        return key;
+    };
 
-    temp.x = start.x;
-    temp.y = start.y;
-    temp.z = start.z;
-    temp.theta = start.theta;
-    temp.cost = 10;
-    OPEN.push(temp);
+    CHeap OPEN;
 
-    while (!OPEN.empty()) {
-        current = OPEN.top();
-        OPEN.pop();
+    SearchPtState& start_state = states(start.x, start.y);
+    start_state.set_cost(10.0);
+    CKey startkey = CreateKey(start_state.cost());
+    OPEN.insertheap(&start_state, startkey);
 
-        if (!CLOSED(current.x, current.y)) {
-            CLOSED(current.x, current.y) = true;
-            //printf("(%i %i)", current.x, current.y);
-            CostToPts_[robotnum](current.x, current.y) = current.cost;
+    ROS_INFO("Seeded search with state %s", to_string(start_state.search_pt()).c_str());
 
-            for (size_t midx = 0; midx < mp_.size(); midx++) {
-                temp.x = current.x + mp_[midx].x;
-                temp.y = current.y + mp_[midx].y;
-                temp.z = current.z;
-                temp.theta = 0;
-                temp.cost = current.cost + mp_[midx].cost;
+    int num_expansions = 0;
+    while (!OPEN.emptyheap()) {
+        SearchPtState* curr = (SearchPtState*)OPEN.deleteminheap();
+        curr->set_closed(true);
+        ++num_expansions;
 
-                if (coverage_.OnInflatedMap(temp.x, temp.y, temp.z, robotnum, robot_size) &&
-                    coverage_.Getval(temp.x, temp.y, temp.z) == FREESPACE)
-                {
-                    OPEN.push(temp);
+        for (size_t midx = 0; midx < mp_.size(); midx++) {
+            SearchPtState& succ = states(curr->x() + mp_[midx].x, curr->y() + mp_[midx].y);
+
+            const int robot_size = robots_[robotnum].CircularSize_;
+            bool is_valid = coverage_.OnInflatedMap(succ.x(), succ.y(), succ.z(), robotnum, robot_size);
+            bool is_freespace = is_valid && coverage_.Getval(succ.x(), succ.y(), succ.z()) == FREESPACE;
+
+            auto boolstr = [](bool b) { return b ? "true":"false"; };
+
+//            ROS_INFO("valid(%d, %d, %d) = %s, freespace(%d, %d, %d) = %s", succ.x(), succ.y(), succ.z(), boolstr(is_valid), succ.x(), succ.y(), succ.z(), boolstr(is_freespace));
+            const bool valid = is_valid && is_freespace;
+
+            if (!valid) {
+                continue;
+            }
+
+            if (!succ.closed()) {
+                CostType succ_cost = succ.cost();
+                CostType new_cost = curr->cost() + mp_[midx].cost;
+                if (new_cost < succ_cost) {
+                    succ.set_cost(new_cost);
+                    CKey succkey = CreateKey(new_cost);
+                    if (OPEN.inheap(&succ)) {
+                        OPEN.updateheap(&succ, succkey);
+                    }
+                    else {
+                        OPEN.insertheap(&succ, succkey);
+                    }
                 }
             }
+        }
+    }
+
+    ROS_INFO("Num Expansions = %d", num_expansions);
+
+    // copy over costmap
+    CostMap& costmap = CostToPts_[robotnum];
+    for (std::size_t x = 0; x < costmap.size(0); ++x) {
+        for (std::size_t y = 0; y < costmap.size(1); ++y) {
+            costmap(x, y) = states(x, y).cost();
         }
     }
 }
@@ -279,6 +338,7 @@ std::vector<Locations_c> ExplorationPlanner::NewGoals(
     std::vector<Locations_c> RobotLocations)
 {
     for (size_t ridx = 0; ridx < RobotLocations.size(); ridx++) {
+        RobotLocations[ridx].z = robots_[ridx].MotionHeight_;
         Dijkstra(RobotLocations[ridx], ridx);
         //printMap(RobotLocations[ridx].z);
     }
