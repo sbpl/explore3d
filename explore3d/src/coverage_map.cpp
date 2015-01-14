@@ -88,5 +88,12 @@ void CoverageMap_c::UpdateDistances()
                 }
             }
         }
+
+        uint robot_size = (*robotsPtr_)[ridx].CircularSize_;
+        for (auto it = DistToObs_[ridx].begin(); it != DistToObs_[ridx].end(); ++it) {
+            if (*it > 100 * robot_size) {
+                *it = 100 * robot_size;
+            }
+        }
     }
 }
