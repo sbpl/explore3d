@@ -1,5 +1,7 @@
 #include "exploration_structs.hpp"
 
+#include <sstream>
+
 bool operator< (const SearchPts_c & pt1, const SearchPts_c & pt2)
 { return pt1.cost < pt2.cost; }
 
@@ -24,4 +26,11 @@ bool ptssort(const pts2d & pt1, const pts2d & pt2)
         return true;
     else
         return false;
+}
+
+std::string to_string(const SearchPts_c& p)
+{
+    std::stringstream ss;
+    ss << "( " << p.x << ", " << p.y << ", " << p.z << ", " << p.theta << ", " << p.cost << " )";
+    return ss.str();
 }

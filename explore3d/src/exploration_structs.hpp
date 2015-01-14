@@ -56,12 +56,15 @@ public:
   //friend bool comparepts (const SearchPts_c & pt1, const SearchPts_c & pt2);
 };
 
+std::string to_string(const SearchPts_c& p);
+
 class SPCompare
 {
 public:
-  bool operator ()(const SearchPts_c& lhs, SearchPts_c& rhs) const   {
-	return lhs.cost > rhs.cost;
-  }
+    bool operator ()(const SearchPts_c& lhs, SearchPts_c& rhs) const
+    {
+        return lhs.cost > rhs.cost;
+    }
 };
 
 class Robot_c
