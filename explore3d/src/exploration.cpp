@@ -28,7 +28,7 @@
 // go to closest
 
 #include <ros/console.h>
-#include <sbpl/utils/heap.h>
+#include <sbpl/headers.h>
 #include "Grid.h"
 
 void ExplorationPlanner::Init(ExpParams_c initparams)
@@ -168,7 +168,7 @@ void ExplorationPlanner::printCounts(uint x0, uint y0, uint x1, uint y1, uint rn
     }
 }
 
-void ExplorationPlanner::Dijkstra(Locations_c start, int robotnum)
+void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
 {
     struct SearchPtState : public AbstractSearchState
     {
@@ -180,12 +180,14 @@ void ExplorationPlanner::Dijkstra(Locations_c start, int robotnum)
         int x() const { return search_pt_.x; }
         int y() const { return search_pt_.y; }
         int z() const { return search_pt_.z; }
+        int theta() const { return search_pt_.theta; }
         CostType cost() const { return search_pt_.cost; }
         bool closed() const { return closed_; }
 
         void set_x(int x) { search_pt_.x = x; }
         void set_y(int y) { search_pt_.y = y; }
         void set_z(int z) { search_pt_.z = z; }
+        void set_theta(int theta) { search_pt_.theta = theta; }
         void set_cost(CostType cost) { search_pt_.cost = cost; }
         void set_closed(bool closed) { closed_ = closed; }
 
@@ -197,7 +199,7 @@ void ExplorationPlanner::Dijkstra(Locations_c start, int robotnum)
         bool closed_;
     };
 
-    // Create search state table
+    // Preallocate search state table
     au::Grid<2, SearchPtState> states(coverage_.x_size_, coverage_.y_size_);
     for (std::size_t x = 0; x < states.size(0); ++x) {
         for (std::size_t y = 0; y < states.size(1); ++y) {
@@ -217,14 +219,28 @@ void ExplorationPlanner::Dijkstra(Locations_c start, int robotnum)
         return key;
     };
 
-    CHeap OPEN;
-
     SearchPtState& start_state = states(start.x, start.y);
     start_state.set_cost(10.0);
+
+    CHeap OPEN;
     CKey startkey = CreateKey(start_state.cost());
     OPEN.insertheap(&start_state, startkey);
 
     ROS_INFO("Seeded search with state %s", to_string(start_state.search_pt()).c_str());
+
+    auto compute_motion_penalty = [&](const SearchPtState& s, const SearchPtState& t)
+    {
+        // Capture a bunch of hacky rules about traversal costs between states
+        int dx = t.x() - start.x;
+        int dy = t.y() - start.y;
+        double end_theta = atan2((double)dy, (double)dx);
+        double start_theta = DiscTheta2Cont(start.theta, NumAngles_);
+        double angle_diff = computeMinUnsignedAngleDiff(end_theta, start_theta);
+        const double arbitrary_backwards_cost_inflation = 10.0;
+        double backwards_penalty = arbitrary_backwards_cost_inflation * angle_diff;
+
+        return std::max(backwards_penalty / M_PI, 1.0);
+    };
 
     int num_expansions = 0;
     while (!OPEN.emptyheap()) {
@@ -238,10 +254,6 @@ void ExplorationPlanner::Dijkstra(Locations_c start, int robotnum)
             const int robot_size = robots_[robotnum].CircularSize_;
             bool is_valid = coverage_.OnInflatedMap(succ.x(), succ.y(), succ.z(), robotnum, robot_size);
             bool is_freespace = is_valid && coverage_.Getval(succ.x(), succ.y(), succ.z()) == FREESPACE;
-
-            auto boolstr = [](bool b) { return b ? "true":"false"; };
-
-//            ROS_INFO("valid(%d, %d, %d) = %s, freespace(%d, %d, %d) = %s", succ.x(), succ.y(), succ.z(), boolstr(is_valid), succ.x(), succ.y(), succ.z(), boolstr(is_freespace));
             const bool valid = is_valid && is_freespace;
 
             if (!valid) {
@@ -250,7 +262,7 @@ void ExplorationPlanner::Dijkstra(Locations_c start, int robotnum)
 
             if (!succ.closed()) {
                 CostType succ_cost = succ.cost();
-                CostType new_cost = curr->cost() + mp_[midx].cost;
+                CostType new_cost = curr->cost() + compute_motion_penalty(*curr, succ) * mp_[midx].cost;
                 if (new_cost < succ_cost) {
                     succ.set_cost(new_cost);
                     CKey succkey = CreateKey(new_cost);

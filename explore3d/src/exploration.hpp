@@ -62,7 +62,7 @@ private:
     friend class CoverageMap_c;
 
     void PrecalcVisibilityCircles(void);
-    void Dijkstra(Locations_c start, int robotnum);
+    void Dijkstra(const Locations_c& start, int robotnum);
     void CreateFrontier(void);
     void GenMotionSteps(void);
     void GenVisibilityRing(void);
