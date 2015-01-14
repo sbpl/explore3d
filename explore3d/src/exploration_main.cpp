@@ -37,6 +37,7 @@ void EP_wrapper::plannerthread(void)
         start = std::chrono::high_resolution_clock::now();
         data_mutex_.lock();
         pts = MapPts_;
+        MapPts_.clear();
         robot_loc = CurrentLocations_;
         data_mutex_.unlock();
         finish = std::chrono::high_resolution_clock::now();
@@ -59,9 +60,6 @@ void EP_wrapper::plannerthread(void)
 
         publish_goal_list(goals);
         publish_planner_maps();
-
-        //clear the map points
-        MapPts_.clear();
     }
 }
 
@@ -221,7 +219,7 @@ bool EP_wrapper::init(void)
             return false;
         }
         Robot_c robot;
-        if (!this->create_robot_from_config(params, scale, robot)) {
+        if (!this->construct_robot_from_config(params, scale, robot)) {
             return false;
         }
         robots.push_back(robot);
@@ -242,7 +240,6 @@ bool EP_wrapper::init(void)
     Goal_pub_ = nh.advertise<nav_msgs::Path>(goal_topic_, 1);
     Goal_point_cloud_pub = nh.advertise<pcl::PointCloud<pcl::PointXYZI>>(goal_point_cloud_topic, 1);
 
-//    coverage_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("coverage_map", 1);
     frontier_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("frontier_map", 1);
 
     cost_map_pub.reserve(params.robots.size());
@@ -415,11 +412,10 @@ void EP_wrapper::publish_planner_maps()
     get_point_cloud_from_points(EP.Frontier3d_, frontier_points);
     publish_point_cloud(frontier_points, frontier_map_pub);
 
-    const auto& grid = EP.coverage_.map_;
     for (std::size_t i = 0; i < params.robots.size(); ++i) {
         ROS_DEBUG("Publishing maps for robot %zd", i);
         nav_msgs::OccupancyGrid motion_height_grid;
-        this->get_occupancy_grid_from_map_at_height(grid, now, motion_height_grid, params.robots[i].MotionHeight_);
+        this->get_occupancy_grid_from_coverage_map(i, now, motion_height_grid);
         coverage_map_pub_.at(i).publish(motion_height_grid);
 
         nav_msgs::OccupancyGrid distance_transform_grid;
@@ -446,13 +442,12 @@ void EP_wrapper::publish_planner_maps()
     ROS_DEBUG("done");
 }
 
-void EP_wrapper::get_occupancy_grid_from_map_at_height(
-    const ExplorationPlanner::Map& epmap,
+void EP_wrapper::get_occupancy_grid_from_coverage_map(
+    int ridx,
     const ros::Time& time,
-    nav_msgs::OccupancyGrid& map,
-    uint height)
+    nav_msgs::OccupancyGrid& map) const
 {
-    assert(epmap.size(0) == size_x && epmap.size(1) == size_y);
+    assert(EP.coverage_.x_size_ == size_x && EP.coverage_.y_size_ == size_y);
 
     map.header.frame_id = frame_id;
     map.header.stamp = time;
@@ -465,9 +460,9 @@ void EP_wrapper::get_occupancy_grid_from_map_at_height(
     map.info.resolution = resolution;
     map.data.resize(size_x * size_y);
 
-    for (std::size_t x = 0; x < epmap.size(0); ++x) {
-        for (std::size_t y = 0; y < epmap.size(1); ++y) {
-            char val = epmap(x, y, height);
+    for (std::size_t x = 0; x < size_x; ++x) {
+        for (std::size_t y = 0; y < size_y; ++y) {
+            char val = EP.coverage_.GetMotionLevelValue(ridx, x, y);
             if ((unsigned char)val == params.unk) {
                 map.data[y * size_x + x] = -1;
             }
@@ -666,10 +661,12 @@ inline void EP_wrapper::get_point_cloud_from_points(const std::vector<T>& point_
     }
 }
 
-bool EP_wrapper::create_robot_from_config(XmlRpc::XmlRpcValue& params, double scale, Robot_c& robot)
+bool EP_wrapper::construct_robot_from_config(XmlRpc::XmlRpcValue& params, double scale, Robot_c& robot)
 {
     if (!params.hasMember("name")               || params["name"].getType() != XmlRpc::XmlRpcValue::TypeString ||
         !params.hasMember("motionheight")       || params["motionheight"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+        !params.hasMember("motionlevelbottom")  || params["motionlevelbottom"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+        !params.hasMember("motionleveltop")     || params["motionleveltop"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
         !params.hasMember("sensorheight")       || params["sensorheight"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
         !params.hasMember("horizontalfov_degs") || params["horizontalfov_degs"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
         !params.hasMember("verticalfov_degs")   || params["verticalfov_degs"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
@@ -681,11 +678,15 @@ bool EP_wrapper::create_robot_from_config(XmlRpc::XmlRpcValue& params, double sc
     }
 
     double robot_motionheight;
+    double robot_motionlevelbottom;
+    double robot_motionleveltop;
     double robot_sensorheight;
     double robot_detectionrange;
     double robot_circularsize;
 
     robot_motionheight = double(params["motionheight"]);
+    robot_motionlevelbottom = double(params["motionlevelbottom"]);
+    robot_motionleveltop = double(params["motionleveltop"]);
     robot_sensorheight = double(params["sensorheight"]);
     robot_detectionrange = double(params["detectionrange"]);
     robot_circularsize = double(params["circularsize"]);
@@ -696,10 +697,12 @@ bool EP_wrapper::create_robot_from_config(XmlRpc::XmlRpcValue& params, double sc
     robot.VerticalFOV_ *= M_PI / 180.0;
 
     robot.name = std::string(params["name"]);
-    robot.MotionHeight_     = (uint)(robot_motionheight / resolution);
-    robot.SensorHeight_     = (uint)(robot_sensorheight / resolution);
-    robot.DetectionRange_   = (uint)(robot_detectionrange);
-    robot.CircularSize_     = (uint)(robot_circularsize / resolution);
+    robot.MotionHeight_         = (uint)(robot_motionheight / resolution);
+    robot.MotionLevelBottom_    = (uint)(robot_motionlevelbottom / resolution);
+    robot.MotionLevelTop_       = (uint)(robot_motionleveltop / resolution);
+    robot.SensorHeight_         = (uint)(robot_sensorheight / resolution);
+    robot.DetectionRange_       = (uint)(robot_detectionrange);
+    robot.CircularSize_         = (uint)(robot_circularsize / resolution);
 
     return true;
 }

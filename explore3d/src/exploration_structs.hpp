@@ -68,8 +68,12 @@ public:
 class Robot_c
 {
 public:
+
   // distances in cells, angles in radians
   uint MotionHeight_;
+  uint MotionLevelBottom_;
+  uint MotionLevelTop_;
+
   uint SensorHeight_;
   double HorizontalFOV_;
   double VerticalFOV_;

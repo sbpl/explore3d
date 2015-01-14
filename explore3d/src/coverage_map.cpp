@@ -7,6 +7,10 @@ bool CoverageMap_c::Init(
     unsigned char ob,
     std::vector<Robot_c> *RobotPtr)
 {
+    if (!RobotPtr) {
+        return false;
+    }
+
     x_size_ = x;
     y_size_ = y;
     z_size_ = z;
@@ -24,7 +28,24 @@ bool CoverageMap_c::Init(
     map_.resize(x, y, z);
     map_.assign(UNK);
 
+    robot_motion_level_maps_.resize(robotsPtr_->size());
+    for (std::size_t i = 0; i < robotsPtr_->size(); ++i) {
+        au::Grid<2, char>& motion_level_map = robot_motion_level_maps_[i];
+        motion_level_map.resize(x, y);
+        motion_level_map.assign(UNK);
+    }
+
     return true;
+}
+
+unsigned char CoverageMap_c::GetMotionLevelValue(uint ridx, int x, int y) const
+{
+    if (OnMap(x, y, 0)) {
+        return robot_motion_level_maps_[ridx](x, y);
+    }
+    else {
+        return 255;
+    }
 }
 
 std::vector<SearchPts_c> CoverageMap_c::GetFrontier3d()
@@ -60,11 +81,11 @@ std::vector<SearchPts_c> CoverageMap_c::GetFrontier3d()
 void CoverageMap_c::UpdateDistances()
 {
     for (size_t ridx = 0; ridx < DistToObs_.size(); ridx++) {
-        uint zz = (*robotsPtr_)[ridx].MotionHeight_;
+        const au::Grid<2, char>& motion_level_map = robot_motion_level_maps_[ridx];
 
         for (uint xidx = 0; xidx < x_size_; xidx++) {
             for (uint yidx = 0; yidx < y_size_; yidx++) {
-                if (xidx == 0 || yidx == 0 || map_(xidx, yidx, zz) == OBS) {
+                if (xidx == 0 || yidx == 0 || motion_level_map(xidx, yidx) == OBS) {
                     DistToObs_[ridx](xidx, yidx) = 0;
                 }
                 else {
@@ -77,7 +98,7 @@ void CoverageMap_c::UpdateDistances()
 
         for (int xidx = x_size_ - 1; xidx >= 0; xidx--) {
             for (int yidx = y_size_ - 1; yidx >= 0; yidx--) {
-                if (xidx == (int)x_size_ - 1 || yidx == (int)y_size_ - 1 || map_(xidx, yidx, zz) == OBS) {
+                if (xidx == (int)x_size_ - 1 || yidx == (int)y_size_ - 1 || motion_level_map(xidx, yidx) == OBS) {
                     DistToObs_[ridx](xidx, yidx) = 0;
                 }
                 else {
@@ -93,6 +114,28 @@ void CoverageMap_c::UpdateDistances()
         for (auto it = DistToObs_[ridx].begin(); it != DistToObs_[ridx].end(); ++it) {
             if (*it > 100 * robot_size) {
                 *it = 100 * robot_size;
+            }
+        }
+    }
+}
+
+void CoverageMap_c::UpdateMotionLevelMaps(int x, int y, int z, char val)
+{
+    // update motion level maps such that if any cell in a given column is an
+    // obstacle, the corresponding 2d cell in the motion level map is an
+    // obstacle. If the entire column is free of obstacles, then the value in
+    // the motion level map takes on the value of the map at the robot's motion
+    // height.
+
+    for (std::size_t i = 0; i < robotsPtr_->size(); ++i) {
+        const Robot_c& robot = (*robotsPtr_)[i];
+        au::Grid<2, char>& motion_level_map = robot_motion_level_maps_[i];
+        if (z >= robot.MotionLevelBottom_ && z <= robot.MotionLevelTop_) {
+            if (val == OBS) {
+                motion_level_map(x, y) = OBS;
+            }
+            else if (z == robot.MotionHeight_){
+                motion_level_map(x, y) = map_(x, y, z);
             }
         }
     }

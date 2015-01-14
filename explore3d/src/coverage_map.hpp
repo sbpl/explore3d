@@ -12,6 +12,9 @@
 /// All cells within obstacles will return 0 as their nearest distance away from obstacles, cells adjacent to obstacle
 /// cells will return 1.0 if they are incident at an edge, 1.41 if they are diagonal, and distances are propagated forth
 /// in an 8-connected manner.
+///
+/// Each cell in the map contains one of three values: one value representing freespace, one for obstacle space, and one
+/// for unknown space. The following condition on these values is assumed to hold: unknown < freespace < obstacle.
 class CoverageMap_c
 {
 public:
@@ -41,6 +44,7 @@ public:
     {
         if (OnMap(x,y,z)) {
             map_(x, y, z) = val;
+            this->UpdateMotionLevelMaps(x, y, z, val);
         }
     }
 
@@ -53,6 +57,8 @@ public:
             return 255;
         }
     }
+
+    unsigned char GetMotionLevelValue(uint rn, int x, int y) const;
 
     /// @brief Return all unknown cells that border a freespace cell.
     std::vector<SearchPts_c> GetFrontier3d();
@@ -86,8 +92,11 @@ public:
 private:
 
     std::vector<au::Grid<2, int>> DistToObs_; // 8-connected distances to obstacle cells in (cells * 100)
+    std::vector<au::Grid<2, char>> robot_motion_level_maps_;
     unsigned char FREESPACE, OBS, UNK;
     std::vector<Robot_c>* robotsPtr_;
+
+    void UpdateMotionLevelMaps(int x, int y, int z, char val);
 };
 
 #endif

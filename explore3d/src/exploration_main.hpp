@@ -82,11 +82,7 @@ private:
 
     void publish_goal_list(const std::vector<Locations_c> & goal_list);
 
-    void get_occupancy_grid_from_map_at_height(
-            const ExplorationPlanner::Map& epmap,
-            const ros::Time& time,
-            nav_msgs::OccupancyGrid& map,
-            uint height);
+    void get_occupancy_grid_from_coverage_map(int ridx, const ros::Time& time, nav_msgs::OccupancyGrid& map) const;
 
     // Create an occupancy grid from a costmap. Invalid values have the value
     // 0xFF in the occupancy grid, normal values have a value between 0 and 100
@@ -131,6 +127,6 @@ private:
 
     void publish_planner_maps();
 
-    bool create_robot_from_config(XmlRpc::XmlRpcValue& params, double scale, Robot_c& robot);
+    bool construct_robot_from_config(XmlRpc::XmlRpcValue& params, double scale, Robot_c& robot);
     void log_robots(const std::vector<Robot_c>& robots);
 };
