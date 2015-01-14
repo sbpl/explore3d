@@ -258,14 +258,15 @@ bool EP_wrapper::init(void)
 }
 
 EP_wrapper::EP_wrapper() :
-		nh(), ph("~")
+    nh(),
+    ph("~")
 {
-	if (!init()) {
-	    ROS_ERROR("Failed to initialize EP wrapper");
-	}
-	else {
-	    ROS_INFO("Successfully initialized EP wrapper");
-	}
+    if (!init()) {
+        ROS_ERROR("Failed to initialize EP wrapper");
+    }
+    else {
+        ROS_INFO("Successfully initialized EP wrapper");
+    }
 }
 
 EP_wrapper::~EP_wrapper()
@@ -574,7 +575,6 @@ void EP_wrapper::get_occupancy_grid_from_distance_transform(
     const ros::Time& now,
     nav_msgs::OccupancyGrid& map) const
 {
-    // TODO: implement
     ExplorationPlanner::CostMap dist_transform;
     dist_transform.resize(coverage_map.x_size_, coverage_map.y_size_);
     for (std::size_t x = 0; x < coverage_map.x_size_; ++x) {
