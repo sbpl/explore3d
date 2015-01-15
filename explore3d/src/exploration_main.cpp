@@ -14,60 +14,123 @@
 #define ros_to_pcl_time_now ros::Time::now().toNSec();
 #endif
 
-
-void EP_wrapper::plannerthread(void)
+ExplorationThread::ExplorationThread() :
+    nh_(),
+    ph_("~"),
+    EP_(),
+    params_(),
+    curr_locations_(),
+    curr_map_points_(),
+    data_mutex_(),
+    plannerthread_curr_locations_(),
+    plannerthread_map_points_(),
+    goal_poses_callback_(),
+    last_goals_(),
+    goals_requested_(false),
+    planner_rate_hz_(0.0),
+    frame_id_(),
+    resolution_(0.0),
+    angle_resolution_(0.0),
+    origin_x_(0.0),
+    origin_y_(0.0),
+    origin_z_(0.0),
+    size_x_(0),
+    size_y_(0),
+    size_z_(0),
+    got_first_map_update_(false),
+    got_first_pose_update_(false),
+    ep_thread_(),
+    initialized_(false),
+    goal_point_cloud_pub_(),
+    frontier_map_pub_(),
+    coverage_map_pub_(),
+    dist_transform_pub_(),
+    cost_map_pub_(),
+    counts_map_pub_(),
+    score_map_pub_()
 {
-    ros::Rate looprate(planner_rate);
-    std::vector<MapElement_c> pts;
-    std::vector<Locations_c> robot_loc;
+}
 
-    while (ros::ok()) {
-        looprate.sleep();
+ExplorationThread::~ExplorationThread()
+{
+    this->shutdown();
+}
 
-        //do not execute planner until first map and pose updates are received
-        if (!(got_first_map_update && got_first_pose_update)) {
-            ROS_INFO("planner_thread: waiting for first map and pose update");
-            continue;
-        }
+bool ExplorationThread::initialize()
+{
+    ph_.param("planner_rate_hz_", planner_rate_hz_, 0.5);
 
-        std::chrono::time_point<std::chrono::high_resolution_clock> start, finish;
+    if (!this->read_map_params()) {
+        return false;
+    }
+    ROS_INFO("dims is %d %d %d", size_x_, size_y_, size_z_);
+    ROS_INFO("resolution_ is %f", resolution_);
 
-        //update map and poses
-        ROS_DEBUG("Updating map and poses...");
-        start = std::chrono::high_resolution_clock::now();
-        data_mutex_.lock();
-        pts = MapPts_;
-        MapPts_.clear();
-        robot_loc = CurrentLocations_;
-        data_mutex_.unlock();
-        finish = std::chrono::high_resolution_clock::now();
-        ROS_DEBUG("Updating map and poses took %0.3f seconds", std::chrono::duration<double>(finish - start).count());
+    if (!this->read_cost_params()) {
+        return false;
+    }
 
-        EP.PartialUpdateMap(pts);
+    // NOTE: robot parameters must be read after the map parameters
+    if (!this->read_robot_params()) {
+        return false;
+    }
 
-        //retrieve goals
-        ROS_INFO("Computing goals...");
-        start = std::chrono::high_resolution_clock::now();
-        for (size_t ridx = 0; ridx < robot_loc.size(); ridx++) {
-            ROS_INFO("poses r%li: %s", ridx, to_string(robot_loc[ridx]).c_str());
-        }
-        std::vector<Locations_c> goals = EP.NewGoals(robot_loc);
-        for (size_t ridx = 0; ridx < goals.size(); ridx++) {
-            ROS_INFO("goals r%li: %s", ridx, to_string(goals[ridx]).c_str());
-        }
-        finish = std::chrono::high_resolution_clock::now();
-        ROS_INFO("Computing goals took %0.3f seconds", std::chrono::duration<double>(finish - start).count());
+    // Initialize Exploration Planner after all the above parameters have been read in.
+    this->log_robots(params_.robots);
+    EP_.Init(params_);
 
-        publish_goal_list(goals);
-        publish_planner_maps();
+    if (!this->initialize_debug_publishers()) {
+        return false;
+    }
+
+    initialized_ = true;
+    return initialized_;
+}
+
+int ExplorationThread::run()
+{
+    if (!this->initialized()) {
+        return 1;
+    }
+
+    ep_thread_ = std::thread(&ExplorationThread::plannerthread, this);
+    return 0;
+}
+
+void ExplorationThread::shutdown()
+{
+    if (ep_thread_.joinable()) {
+        ep_thread_.join();
     }
 }
 
-void EP_wrapper::PoseCallback(const nav_msgs::PathConstPtr& msg)
+void ExplorationThread::update_map(const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& cloud)
+{
+    MapElement_c pt;
+    for (size_t pidx = 0; pidx < cloud->points.size(); pidx++) {
+        //convert coordinates to discrete in map frame
+        pt.x = continuous_to_discrete(cloud->points[pidx].x - origin_x_, resolution_);
+        pt.y = continuous_to_discrete(cloud->points[pidx].y - origin_y_, resolution_);
+        pt.z = continuous_to_discrete(cloud->points[pidx].z - origin_z_, resolution_);
+        pt.data = cloud->points[pidx].intensity;
+
+        //dont add points outside of map bounds
+        if (!bounds_check(pt)) {
+            continue;
+        }
+
+        curr_map_points_.push_back(pt);
+    }
+
+    got_first_map_update_ = true;
+    ROS_DEBUG("map upate callback finished");
+}
+
+void ExplorationThread::update_poses(const nav_msgs::PathConstPtr& robot_poses)
 {
     Locations_c SegLoc, HexaLoc;
 
-    auto poses = msg->poses;
+    auto poses = robot_poses->poses;
 
     if (poses.size() < 2) {
         ROS_ERROR("ERROR poses list provided is size %d when it should be size %d", (int)poses.size(), 2);
@@ -75,17 +138,17 @@ void EP_wrapper::PoseCallback(const nav_msgs::PathConstPtr& msg)
 
     //Convert poses from world continuous to map discrete
     double yaw;
-    SegLoc.x = continuous_to_discrete(poses[0].pose.position.x - origin_x, resolution);
-    SegLoc.y = continuous_to_discrete(poses[0].pose.position.y - origin_y, resolution);
-    SegLoc.z = continuous_to_discrete(poses[0].pose.position.z - origin_z, resolution);
+    SegLoc.x = continuous_to_discrete(poses[0].pose.position.x - origin_x_, resolution_);
+    SegLoc.y = continuous_to_discrete(poses[0].pose.position.y - origin_y_, resolution_);
+    SegLoc.z = continuous_to_discrete(poses[0].pose.position.z - origin_z_, resolution_);
     quaternion_to_yaw(poses[0].pose.orientation, yaw);
-    SegLoc.theta = continuous_angle_to_discrete(yaw, angle_resolution);
+    SegLoc.theta = continuous_angle_to_discrete(yaw, angle_resolution_);
 
-    HexaLoc.x = continuous_to_discrete(poses[1].pose.position.x - origin_x, resolution);
-    HexaLoc.y = continuous_to_discrete(poses[1].pose.position.y - origin_y, resolution);
-    HexaLoc.z = continuous_to_discrete(poses[1].pose.position.z - origin_z, resolution);
+    HexaLoc.x = continuous_to_discrete(poses[1].pose.position.x - origin_x_, resolution_);
+    HexaLoc.y = continuous_to_discrete(poses[1].pose.position.y - origin_y_, resolution_);
+    HexaLoc.z = continuous_to_discrete(poses[1].pose.position.z - origin_z_, resolution_);
     quaternion_to_yaw(poses[1].pose.orientation, yaw);
-    HexaLoc.theta = continuous_angle_to_discrete(yaw, angle_resolution);
+    HexaLoc.theta = continuous_angle_to_discrete(yaw, angle_resolution_);
 
     bool hexa_bound_check = true;
     bool segbot_bound_check = true;
@@ -93,11 +156,11 @@ void EP_wrapper::PoseCallback(const nav_msgs::PathConstPtr& msg)
     // bounds check both robot locationss
     if (!bounds_check(SegLoc)) {
         segbot_bound_check = false;
-        ROS_ERROR("ERROR: segbot location at discrete location %d %d %d outside of mapbounds %u %u %u", SegLoc.x, SegLoc.y, SegLoc.z, size_x, size_y, size_y);
+        ROS_ERROR("ERROR: segbot location at discrete location %d %d %d outside of mapbounds %u %u %u", SegLoc.x, SegLoc.y, SegLoc.z, size_x_, size_y_, size_z_);
     }
     if (!bounds_check(HexaLoc)) {
         hexa_bound_check = false;
-        ROS_ERROR("ERROR: hexa location at discrete location %d %d %d outside of mapbounds %u %u %u", HexaLoc.x, HexaLoc.y, HexaLoc.z, size_x, size_y, size_y);
+        ROS_ERROR("ERROR: hexa location at discrete location %d %d %d outside of mapbounds %u %u %u", HexaLoc.x, HexaLoc.y, HexaLoc.z, size_x_, size_y_, size_z_);
     }
 
     // don't update locations if one is outside map bounds
@@ -105,107 +168,125 @@ void EP_wrapper::PoseCallback(const nav_msgs::PathConstPtr& msg)
         return;
     }
 
+    curr_locations_.clear();
+    curr_locations_.push_back(SegLoc);
+    curr_locations_.push_back(HexaLoc);
+    got_first_pose_update_ = true;
+}
+
+bool ExplorationThread::compute_goals(const GoalPosesCallback& goal_poses_callback)
+{
+    std::unique_lock<std::mutex> lock(data_mutex_);
+    if (this->ready_to_plan()) {
+        ROS_INFO("Request to compute goals received");
+        plannerthread_curr_locations_ = curr_locations_;
+        plannerthread_map_points_ = curr_map_points_;
+        goals_requested_ = true;
+        goal_poses_callback_ = goal_poses_callback;
+        return true;
+    }
+    else {
+        ROS_INFO("planner_thread: waiting for first map and pose update");
+        return false;
+    }
+}
+
+void ExplorationThread::publish_maps()
+{
+    std::unique_lock<std::mutex> lock(data_mutex_);
+    this->publish_goal_cloud();
+    this->publish_planner_maps();
+}
+
+bool ExplorationThread::construct_robot_from_config(XmlRpc::XmlRpcValue& params, Robot_c& robot)
+{
+    if (!params.hasMember("name")               || params["name"].getType() != XmlRpc::XmlRpcValue::TypeString ||
+        !params.hasMember("motionheight")       || params["motionheight"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+        !params.hasMember("motionlevelbottom")  || params["motionlevelbottom"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+        !params.hasMember("motionleveltop")     || params["motionleveltop"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+        !params.hasMember("sensorheight")       || params["sensorheight"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+        !params.hasMember("horizontalfov_degs") || params["horizontalfov_degs"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+        !params.hasMember("verticalfov_degs")   || params["verticalfov_degs"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+        !params.hasMember("detectionrange")     || params["detectionrange"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
+        !params.hasMember("circularsize")       || params["circularsize"].getType() != XmlRpc::XmlRpcValue::TypeDouble)
     {
-        std::unique_lock<std::mutex> data_lock(data_mutex_);
-        CurrentLocations_.clear();
-        CurrentLocations_.push_back(SegLoc);
-        CurrentLocations_.push_back(HexaLoc);
+        ROS_ERROR("Robot config does not support minimum requirements");
+        return false;
     }
 
-    got_first_pose_update = true;
+    double robot_motionheight;
+    double robot_motionlevelbottom;
+    double robot_motionleveltop;
+    double robot_sensorheight;
+    double robot_detectionrange;
+    double robot_circularsize;
+
+    robot_motionheight = double(params["motionheight"]);
+    robot_motionlevelbottom = double(params["motionlevelbottom"]);
+    robot_motionleveltop = double(params["motionleveltop"]);
+    robot_sensorheight = double(params["sensorheight"]);
+    robot_detectionrange = double(params["detectionrange"]);
+    robot_circularsize = double(params["circularsize"]);
+
+    robot.HorizontalFOV_ = double(params["horizontalfov_degs"]);
+    robot.VerticalFOV_ = double(params["verticalfov_degs"]);
+    robot.HorizontalFOV_ *= M_PI / 180.0;
+    robot.VerticalFOV_ *= M_PI / 180.0;
+
+    robot.name = std::string(params["name"]);
+    robot.MotionHeight_         = (uint)(robot_motionheight / resolution_);
+    robot.MotionLevelBottom_    = (uint)(robot_motionlevelbottom / resolution_);
+    robot.MotionLevelTop_       = (uint)(robot_motionleveltop / resolution_);
+    robot.SensorHeight_         = (uint)(robot_sensorheight / resolution_);
+    robot.DetectionRange_       = (uint)(robot_detectionrange / resolution_);
+    robot.CircularSize_         = (uint)(robot_circularsize / resolution_);
+
+    return true;
 }
 
-void EP_wrapper::MapCallback(const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& msg)
+void ExplorationThread::log_robots(const std::vector<Robot_c>& robots)
 {
-    ROS_DEBUG("map upate callback for seq %d", (int ) msg->header.seq);
-    std::unique_lock<std::mutex> data_lock(data_mutex_);
-    //TODO: this is inefficient
-    MapElement_c pt;
-    for (size_t pidx = 0; pidx < msg->points.size(); pidx++) {
-        //convert coordinates to discrete in map frame
-        pt.x = continuous_to_discrete(msg->points[pidx].x - origin_x, resolution);
-        pt.y = continuous_to_discrete(msg->points[pidx].y - origin_y, resolution);
-        pt.z = continuous_to_discrete(msg->points[pidx].z - origin_z, resolution);
-        pt.data = msg->points[pidx].intensity;
-
-        //dont add points outside of map bounds
-        if (!bounds_check(pt)) {
-            continue;
-        }
-
-        MapPts_.push_back(pt);
+    ROS_INFO("Robots:");
+    for (const Robot_c& robot : robots) {
+        ROS_INFO("  %s", robot.name.c_str());
+        ROS_INFO("    Vertical FOV: %0.3f", robot.VerticalFOV_);
+        ROS_INFO("    Horizontal FOV: %0.3f", robot.HorizontalFOV_);
+        ROS_INFO("    Circular Size: %u", robot.CircularSize_);
+        ROS_INFO("    Detection Range: %u", robot.DetectionRange_);
+        ROS_INFO("    Motion Height: %u", robot.MotionHeight_);
+        ROS_INFO("    Sensor Height: %u", robot.SensorHeight_);
     }
-    data_lock.unlock();
-    got_first_map_update = true;
-    ROS_DEBUG("map upate callback finished");
 }
 
-bool EP_wrapper::init(void)
+bool ExplorationThread::initialized() const
 {
-    ph.param("planner_rate", planner_rate, 0.5);
-    ph.param("scale", scale, 20.0);
+    return initialized_;
+}
 
-    got_first_map_update = false;
-    got_first_pose_update = false;
+bool ExplorationThread::read_map_params()
+{
+    int numangles;
+    ph_.param<std::string>("frame_id", frame_id_, "/map");
+    ph_.param<int>("size_x", size_x_, 500);
+    ph_.param<int>("size_y", size_y_, 500);
+    ph_.param<int>("size_z", size_z_, 50);
+    ph_.param<double>("origin_x", origin_x_, 0);
+    ph_.param<double>("origin_y", origin_y_, 0);
+    ph_.param<double>("origin_z", origin_z_, 0);
+    ph_.param<double>("resolution_", resolution_, 0.5);
+    ph_.param<int>("numangles", numangles, 16); // number of thetas
 
-    //////////////////////////////////////////////////////////////////////
-    // Read in map parameters
-    //////////////////////////////////////////////////////////////////////
+    params_.size_x = size_x_;
+    params_.size_y = size_y_;
+    params_.size_z = size_z_;
+    angle_resolution_ = (2 * M_PI) / numangles;
+    return true;
+}
 
-    ph.param<std::string>("frame_id", frame_id, "/map");
-    ph.param<int>("size_x", size_x, 500);
-    ph.param<int>("size_y", size_y, 500);
-    ph.param<int>("size_z", size_z, 50);
-    ph.param<double>("origin_x", origin_x, 0);
-    ph.param<double>("origin_y", origin_y, 0);
-    ph.param<double>("origin_z", origin_z, 0);
-    ph.param<double>("resolution", resolution, 0.5);
-
-    params.size_x = size_x;
-    params.size_y = size_y;
-    params.size_z = size_z;
-
-    //////////////////////////////////////////////////////////////////////
-    // Read in cost parameters
-    //////////////////////////////////////////////////////////////////////
-
-    int objectmaxelev, obs, freespace, unk, numangles, mindist;
-    double backwards_penalty;
-    ph.param<int>("objectmaxelev", objectmaxelev, (uint) 1.5 * scale); // max height to consider for the OOI (cells)
-    ph.param<int>("obsvalue", obs, 100); // values for obstacles, freespace, unknown
-    ph.param<int>("freevalue", freespace, 50);
-    ph.param<int>("unkvalue", unk, 0);
-    ph.param<int>("numangles", numangles, 16); // number of thetas
-    ph.param<int>("mindist", mindist, (uint) 1.2 * scale); // closest robots should operate without penalty (cells)
-    ph.param<double>("backwards_penalty", backwards_penalty, 1.0);
-
-    params.ObjectMaxElev = objectmaxelev;
-    params.obs = obs;
-    params.freespace = freespace;
-    params.unk = unk;
-    params.NumAngles = numangles;
-    params.MinDist = mindist;
-    params.backwards_penalty = backwards_penalty;
-
-    angle_resolution = (2 * M_PI) / numangles;
-
-    //////////////////////////////////////////////////////////////////////
-    // Read in topic name parameters
-    //////////////////////////////////////////////////////////////////////
-
-    ph.param<std::string>("goal_topic", goal_topic_, "goal_list");
-    ph.param<std::string>("map_topic", map_topic_, "combined_map");
-    ph.param<std::string>("pose_topic", pose_topic_, "combined_pose");
-    ph.param<std::string>("goal_point_cloud_topic", goal_point_cloud_topic, "goal_point_cloud");
-
-    //////////////////////////////////////////////////////////////////////
-    // Read in robot parameters.
-    //////////////////////////////////////////////////////////////////////
-
-    // NOTE: robot parameters must be read after the map parameters
-
+bool ExplorationThread::read_robot_params()
+{
     XmlRpc::XmlRpcValue robot_params;
-    ph.getParam("robot_params", robot_params);
+    ph_.getParam("robot_params", robot_params);
     if (robot_params.getType() != XmlRpc::XmlRpcValue::TypeArray) {
         return false;
     }
@@ -219,94 +300,116 @@ bool EP_wrapper::init(void)
             return false;
         }
         Robot_c robot;
-        if (!this->construct_robot_from_config(params, scale, robot)) {
+        if (!this->construct_robot_from_config(params, robot)) {
             return false;
         }
         robots.push_back(robot);
     }
-    params.robots = robots;
-
-    this->log_robots(params.robots);
-
-    EP.Init(params);
-    EP_thread_ = new std::thread(&EP_wrapper::plannerthread, this);
-
-    ROS_ERROR("subscribed to %s and %s", pose_topic_.c_str(), map_topic_.c_str());
-    ROS_ERROR("dims is %d %d %d", size_x, size_y, size_z);
-    ROS_ERROR("resolution is %f", resolution);
-
-    Pose_sub_ = nh.subscribe(pose_topic_, 1, &EP_wrapper::PoseCallback, this);
-    Map_sub_ = nh.subscribe(map_topic_, 20, &EP_wrapper::MapCallback, this);
-    Goal_pub_ = nh.advertise<nav_msgs::Path>(goal_topic_, 1);
-    Goal_point_cloud_pub = nh.advertise<pcl::PointCloud<pcl::PointXYZI>>(goal_point_cloud_topic, 1);
-
-    frontier_map_pub = ph.advertise<pcl::PointCloud<pcl::PointXYZI> >("frontier_map", 1);
-
-    cost_map_pub.reserve(params.robots.size());
-    counts_map_pub.reserve(params.robots.size());
-    score_map_pub.reserve(params.robots.size());
-    for (const Robot_c& robot : params.robots) {
-        ros::Publisher robot_costmap_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_cost_map", 1);
-        ros::Publisher dist_transform_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_dist_transform", 1);
-        ros::Publisher robot_counts_map_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_counts_map", 1);
-        ros::Publisher robot_coverage_map_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_coverage_map", 1);
-        ros::Publisher robot_score_map_pub = ph.advertise<nav_msgs::OccupancyGrid>(robot.name + "_score_map", 1);
-        coverage_map_pub_.push_back(robot_coverage_map_pub);
-        dist_transform_pub_.push_back(dist_transform_pub);
-        cost_map_pub.push_back(robot_costmap_pub);
-        counts_map_pub.push_back(robot_counts_map_pub);
-        score_map_pub.push_back(robot_score_map_pub);
-    }
-
+    params_.robots = robots;
     return true;
 }
 
-EP_wrapper::EP_wrapper() :
-    nh(),
-    ph("~")
+bool ExplorationThread::read_cost_params()
 {
-    if (!init()) {
-        ROS_ERROR("Failed to initialize EP wrapper");
+    const double scale = 20.0;
+    int objectmaxelev, obs, freespace, unk, numangles, mindist;
+    double backwards_penalty;
+    ph_.param<int>("objectmaxelev", objectmaxelev, (uint) 1.5 * scale); // max height to consider for the OOI (cells)
+    ph_.param<int>("obsvalue", obs, 100); // values for obstacles, freespace, unknown
+    ph_.param<int>("freevalue", freespace, 50);
+    ph_.param<int>("unkvalue", unk, 0);
+    ph_.param<int>("mindist", mindist, (uint) 1.2 * scale); // closest robots should operate without penalty (cells)
+    ph_.param<double>("backwards_penalty", backwards_penalty, 1.0);
+
+    params_.ObjectMaxElev = objectmaxelev;
+    params_.obs = obs;
+    params_.freespace = freespace;
+    params_.unk = unk;
+    params_.NumAngles = numangles;
+    params_.MinDist = mindist;
+    params_.backwards_penalty = backwards_penalty;
+    return true;
+}
+
+bool ExplorationThread::initialize_debug_publishers()
+{
+    goal_point_cloud_pub_ = nh_.advertise<pcl::PointCloud<pcl::PointXYZI>>("goal_point_cloud", 1);
+    frontier_map_pub_ = ph_.advertise<pcl::PointCloud<pcl::PointXYZI> >("frontier_map", 1);
+    cost_map_pub_.reserve(params_.robots.size());
+    counts_map_pub_.reserve(params_.robots.size());
+    score_map_pub_.reserve(params_.robots.size());
+    for (const Robot_c& robot : params_.robots) {
+        ros::Publisher robot_costmap_pub = ph_.advertise<nav_msgs::OccupancyGrid>(robot.name + "_cost_map", 1);
+        ros::Publisher dist_transform_pub = ph_.advertise<nav_msgs::OccupancyGrid>(robot.name + "_dist_transform", 1);
+        ros::Publisher robot_counts_map_pub = ph_.advertise<nav_msgs::OccupancyGrid>(robot.name + "_counts_map", 1);
+        ros::Publisher robot_coverage_map_pub = ph_.advertise<nav_msgs::OccupancyGrid>(robot.name + "_coverage_map", 1);
+        ros::Publisher robot_score_map_pub = ph_.advertise<nav_msgs::OccupancyGrid>(robot.name + "_score_map", 1);
+        coverage_map_pub_.push_back(robot_coverage_map_pub);
+        dist_transform_pub_.push_back(dist_transform_pub);
+        cost_map_pub_.push_back(robot_costmap_pub);
+        counts_map_pub_.push_back(robot_counts_map_pub);
+        score_map_pub_.push_back(robot_score_map_pub);
     }
-    else {
-        ROS_INFO("Successfully initialized EP wrapper");
+    return true;
+}
+
+void ExplorationThread::plannerthread()
+{
+    ros::Rate looprate(planner_rate_hz_);
+    while (ros::ok()) {
+        data_mutex_.lock();
+        if (goals_requested_) {
+            ROS_INFO("Processing goals request");
+            assert(this->ready_to_plan());
+            std::chrono::time_point<std::chrono::high_resolution_clock> start, finish;
+            ROS_DEBUG("Updating exploration planner map...");
+            start = std::chrono::high_resolution_clock::now();
+            EP_.PartialUpdateMap(plannerthread_map_points_);
+            finish = std::chrono::high_resolution_clock::now();
+            ROS_DEBUG("Updating exploration planner map took %0.3f seconds", std::chrono::duration<double>(finish - start).count());
+
+            ROS_INFO("Computing goals...");
+            start = std::chrono::high_resolution_clock::now();
+            for (size_t ridx = 0; ridx < plannerthread_curr_locations_.size(); ridx++) {
+                ROS_INFO("poses r%li: %s", ridx, to_string(plannerthread_curr_locations_[ridx]).c_str());
+            }
+
+            std::vector<Locations_c> goals = EP_.NewGoals(plannerthread_curr_locations_);
+
+            for (size_t ridx = 0; ridx < goals.size(); ridx++) {
+                ROS_INFO("goals r%li: %s", ridx, to_string(goals[ridx]).c_str());
+            }
+            finish = std::chrono::high_resolution_clock::now();
+            ROS_INFO("Computing goals took %0.3f seconds", std::chrono::duration<double>(finish - start).count());
+
+            this->goal_locations_to_path_msg(goals, last_goals_);
+            goals_requested_ = false;
+            goal_poses_callback_(last_goals_);
+        }
+        data_mutex_.unlock();
+
+        looprate.sleep();
     }
 }
 
-EP_wrapper::~EP_wrapper()
+bool ExplorationThread::ready_to_plan() const
 {
-    if (EP_thread_ && EP_thread_->joinable()) {
-        EP_thread_->join();
-        delete EP_thread_;
-    }
+    return got_first_map_update_ && got_first_pose_update_;
 }
 
 template<typename T>
-bool EP_wrapper::bounds_check(const T& point)
+bool ExplorationThread::bounds_check(const T& point) const
 {
-    if ((int) point.x < 0 || (int) point.x >= size_x ||
-        (int) point.y < 0 || (int) point.y >= size_y ||
-        (int) point.z < 0 || (int) point.z >= size_z)
+    if ((int) point.x < 0 || (int) point.x >= size_x_ ||
+        (int) point.y < 0 || (int) point.y >= size_y_ ||
+        (int) point.z < 0 || (int) point.z >= size_z_)
     {
         return false;
     }
     return true;
 }
 
-int main(int argc, char** argv)
-{
-    ROS_ERROR("start");
-    ros::init(argc, argv, "Exploration");
-    ROS_ERROR("ros init done");
-    EP_wrapper EPW;
-    ROS_ERROR("made EP wrapper");
-
-    while (ros::ok()) {
-        ros::spin();
-    }
-}
-
-int EP_wrapper::continuous_to_discrete(double cont, double res)
+int ExplorationThread::continuous_to_discrete(double cont, double res) const
 {
     double v = cont / res;
     v >= 0 ? v = floor(v) : v = ceil(v - 1);
@@ -314,60 +417,61 @@ int EP_wrapper::continuous_to_discrete(double cont, double res)
     return d;
 }
 
-double EP_wrapper::discrete_to_continuous(int disc, double res)
+double ExplorationThread::discrete_to_continuous(int disc, double res) const
 {
     double s = (static_cast<double>(disc) * res) + (res / 2.0);
     return s;
 }
 
-void EP_wrapper::publish_goal_list(const std::vector<Locations_c>& goals)
+void ExplorationThread::goal_locations_to_path_msg(
+    const std::vector<Locations_c>& goal_locations,
+    nav_msgs::Path& msg) const
 {
-    nav_msgs::Path goal_list;
-    goal_list.header.frame_id = frame_id;
-    goal_list.header.stamp = ros::Time::now();
-    goal_list.poses.resize(2);
+    msg.header.frame_id = frame_id_;
+    msg.header.stamp = ros::Time::now();
+    msg.poses.resize(2);
 
     //convert goals to world frame, continuous
-    goal_list.poses[0].pose.position.x = discrete_to_continuous(goals[0].x, resolution) + origin_x;
-    goal_list.poses[0].pose.position.y = discrete_to_continuous(goals[0].y, resolution) + origin_y;
-    goal_list.poses[0].pose.position.z = discrete_to_continuous(goals[0].z, resolution) + origin_z;
-    yaw_to_quaternion(discrete_anngle_to_continuous(goals[0].theta, angle_resolution), goal_list.poses[0].pose.orientation);
+    msg.poses[0].pose.position.x = discrete_to_continuous(goal_locations[0].x, resolution_) + origin_x_;
+    msg.poses[0].pose.position.y = discrete_to_continuous(goal_locations[0].y, resolution_) + origin_y_;
+    msg.poses[0].pose.position.z = discrete_to_continuous(goal_locations[0].z, resolution_) + origin_z_;
+    yaw_to_quaternion(discrete_anngle_to_continuous(goal_locations[0].theta, angle_resolution_), msg.poses[0].pose.orientation);
 
-    goal_list.poses[1].pose.position.x = discrete_to_continuous(goals[1].x, resolution) + origin_x;
-    goal_list.poses[1].pose.position.y = discrete_to_continuous(goals[1].y, resolution) + origin_y;
-    goal_list.poses[1].pose.position.z = discrete_to_continuous(goals[1].z, resolution) + origin_z;
-    yaw_to_quaternion(discrete_anngle_to_continuous(goals[1].theta, angle_resolution), goal_list.poses[1].pose.orientation);
+    msg.poses[1].pose.position.x = discrete_to_continuous(goal_locations[1].x, resolution_) + origin_x_;
+    msg.poses[1].pose.position.y = discrete_to_continuous(goal_locations[1].y, resolution_) + origin_y_;
+    msg.poses[1].pose.position.z = discrete_to_continuous(goal_locations[1].z, resolution_) + origin_z_;
+    yaw_to_quaternion(discrete_anngle_to_continuous(goal_locations[1].theta, angle_resolution_), msg.poses[1].pose.orientation);
+}
 
-    //publish goals as path
-    Goal_pub_.publish(goal_list);
-
+void ExplorationThread::publish_goal_cloud()
+{
     //convert to list of points and publish point cloud
     std::vector<pcl::PointXYZI> points;
-    for (auto & pose : goal_list.poses) {
+    for (auto & pose : last_goals_.poses) {
         pcl::PointXYZI p;
         p.x = pose.pose.position.x;
         p.y = pose.pose.position.y;
         p.z = pose.pose.position.z;
         points.push_back(p);
     }
-    publish_point_cloud(points, Goal_point_cloud_pub);
+    publish_point_cloud(points, goal_point_cloud_pub_);
 }
 
-void EP_wrapper::quaternion_to_yaw(const geometry_msgs::Quaternion& quat, double& yaw)
+void ExplorationThread::quaternion_to_yaw(const geometry_msgs::Quaternion& quat, double& yaw) const
 {
     tf::Quaternion tf_quat;
     tf::quaternionMsgToTF(quat, tf_quat);
     yaw = tf::getYaw(tf_quat);
 }
 
-void EP_wrapper::yaw_to_quaternion(const double& yaw, geometry_msgs::Quaternion& quat)
+void ExplorationThread::yaw_to_quaternion(const double& yaw, geometry_msgs::Quaternion& quat) const
 {
     const geometry_msgs::Quaternion q;
     tf::Quaternion tf_quat = tf::createQuaternionFromRPY(0, 0, yaw);
     tf::quaternionTFToMsg(tf_quat, quat);
 }
 
-int EP_wrapper::continuous_angle_to_discrete(double cont, double res)
+int ExplorationThread::continuous_angle_to_discrete(double cont, double res) const
 {
     double pi = M_PI;
 
@@ -380,18 +484,18 @@ int EP_wrapper::continuous_angle_to_discrete(double cont, double res)
     return d;
 }
 
-int EP_wrapper::discrete_anngle_to_continuous(int disc, double res)
+int ExplorationThread::discrete_anngle_to_continuous(int disc, double res) const
 {
     double scaled = static_cast<double>(disc);
     return scaled * res;
 }
 
-void EP_wrapper::publish_point_cloud(const std::vector<pcl::PointXYZI>& points, const ros::Publisher& publisher)
+void ExplorationThread::publish_point_cloud(const std::vector<pcl::PointXYZI>& points, const ros::Publisher& publisher)
 {
     //make point cloud for goals
     pcl::PointCloud<pcl::PointXYZI> cloud;
     cloud.header.stamp = ros_to_pcl_time_now;
-    cloud.header.frame_id = frame_id;
+    cloud.header.frame_id = frame_id_;
     cloud.height = 1;
 
     cloud.points.reserve(points.size());
@@ -402,75 +506,75 @@ void EP_wrapper::publish_point_cloud(const std::vector<pcl::PointXYZI>& points, 
     publisher.publish(cloud);
 }
 
-void EP_wrapper::publish_planner_maps()
+void ExplorationThread::publish_planner_maps()
 {
     ROS_DEBUG("publishing maps....");
 
     ros::Time now = ros::Time::now();
 
     std::vector<pcl::PointXYZI> frontier_points;
-    get_point_cloud_from_points(EP.Frontier3d_, frontier_points);
-    publish_point_cloud(frontier_points, frontier_map_pub);
+    get_point_cloud_from_points(EP_.Frontier3d_, frontier_points);
+    publish_point_cloud(frontier_points, frontier_map_pub_);
 
-    for (std::size_t i = 0; i < params.robots.size(); ++i) {
+    for (std::size_t i = 0; i < params_.robots.size(); ++i) {
         ROS_DEBUG("Publishing maps for robot %zd", i);
         nav_msgs::OccupancyGrid motion_height_grid;
         this->get_occupancy_grid_from_coverage_map(i, now, motion_height_grid);
         coverage_map_pub_.at(i).publish(motion_height_grid);
 
         nav_msgs::OccupancyGrid distance_transform_grid;
-        const auto& coverage_map = EP.coverage_;
+        const auto& coverage_map = EP_.coverage_;
         this->get_occupancy_grid_from_distance_transform(coverage_map, i, now, distance_transform_grid);
         dist_transform_pub_.at(i).publish(distance_transform_grid);
 
         ROS_DEBUG("  Publishing costmap...");
         nav_msgs::OccupancyGrid costmap_grid;
-        this->get_occupancy_grid_from_costmap(EP.CostToPts_.at(i), now, costmap_grid);
-        cost_map_pub.at(i).publish(costmap_grid);
+        this->get_occupancy_grid_from_costmap(EP_.CostToPts_.at(i), now, costmap_grid);
+        cost_map_pub_.at(i).publish(costmap_grid);
 
         ROS_DEBUG("  Publishing countmap...");
         nav_msgs::OccupancyGrid count_grid;
-        get_occupancy_grid_from_countmap(EP.counts_.at(i), now, count_grid);
-        counts_map_pub.at(i).publish(count_grid);
+        get_occupancy_grid_from_countmap(EP_.counts_.at(i), now, count_grid);
+        counts_map_pub_.at(i).publish(count_grid);
 
         ROS_DEBUG("  Publishing scoremap");
         nav_msgs::OccupancyGrid score_grid;
-        get_occupancy_grid_from_countmap(EP.scores_.at(i), now, score_grid);
-        score_map_pub.at(i).publish(score_grid);
+        get_occupancy_grid_from_countmap(EP_.scores_.at(i), now, score_grid);
+        score_map_pub_.at(i).publish(score_grid);
     }
 
     ROS_DEBUG("done");
 }
 
-void EP_wrapper::get_occupancy_grid_from_coverage_map(
+void ExplorationThread::get_occupancy_grid_from_coverage_map(
     int ridx,
     const ros::Time& time,
     nav_msgs::OccupancyGrid& map) const
 {
-    assert(EP.coverage_.x_size_ == size_x && EP.coverage_.y_size_ == size_y);
+    assert(EP_.coverage_.x_size_ == size_x_ && EP_.coverage_.y_size_ == size_y_);
 
-    map.header.frame_id = frame_id;
+    map.header.frame_id = frame_id_;
     map.header.stamp = time;
 
-    map.info.width = size_x;
-    map.info.height = size_y;
-    map.info.origin.position.x = origin_x;
-    map.info.origin.position.y = origin_y;
-    map.info.origin.position.z = origin_z;
-    map.info.resolution = resolution;
-    map.data.resize(size_x * size_y);
+    map.info.width = size_x_;
+    map.info.height = size_y_;
+    map.info.origin.position.x = origin_x_;
+    map.info.origin.position.y = origin_y_;
+    map.info.origin.position.z = origin_z_;
+    map.info.resolution = resolution_;
+    map.data.resize(size_x_ * size_y_);
 
-    for (std::size_t x = 0; x < size_x; ++x) {
-        for (std::size_t y = 0; y < size_y; ++y) {
-            char val = EP.coverage_.GetMotionLevelValue(ridx, x, y);
-            if ((unsigned char)val == params.unk) {
-                map.data[y * size_x + x] = -1;
+    for (std::size_t x = 0; x < size_x_; ++x) {
+        for (std::size_t y = 0; y < size_y_; ++y) {
+            char val = EP_.coverage_.GetMotionLevelValue(ridx, x, y);
+            if ((unsigned char)val == params_.unk) {
+                map.data[y * size_x_ + x] = -1;
             }
-            else if ((unsigned char)val == params.freespace) {
-                map.data[y * size_x + x] = 0;
+            else if ((unsigned char)val == params_.freespace) {
+                map.data[y * size_x_ + x] = 0;
             }
-            else if ((unsigned char)val == params.obs) {
-                map.data[y * size_x + x] = 100;
+            else if ((unsigned char)val == params_.obs) {
+                map.data[y * size_x_ + x] = 100;
             }
             else {
                 ROS_ERROR("Unexpected 3-D map value");
@@ -479,22 +583,22 @@ void EP_wrapper::get_occupancy_grid_from_coverage_map(
     }
 }
 
-void EP_wrapper::get_occupancy_grid_from_costmap(
+void ExplorationThread::get_occupancy_grid_from_costmap(
     const ExplorationPlanner::CostMap& costmap,
     const ros::Time& time,
     nav_msgs::OccupancyGrid& map) const
 {
-    map.header.frame_id = frame_id;
+    map.header.frame_id = frame_id_;
     map.header.stamp = time;
 
-    map.info.width = size_x;
-    map.info.height = size_y;
-    map.info.origin.position.x = origin_x;
-    map.info.origin.position.y = origin_y;
-    map.info.origin.position.z = origin_z;
-    map.info.resolution = resolution;
+    map.info.width = size_x_;
+    map.info.height = size_y_;
+    map.info.origin.position.x = origin_x_;
+    map.info.origin.position.y = origin_y_;
+    map.info.origin.position.z = origin_z_;
+    map.info.resolution = resolution_;
 
-    map.data.resize(size_x * size_y);
+    map.data.resize(size_x_ * size_y_);
 
     // find the minimum and maximum non-infinite costs in the costmap
     CostType min_cost = -1.0, max_cost = -1.0;
@@ -536,22 +640,22 @@ void EP_wrapper::get_occupancy_grid_from_costmap(
         for (std::size_t y = 0; y < costmap.size(1); ++y) {
             CostType cost = costmap(x, y);
             if (cost == MaxCost) {
-                map.data[y * size_x + x] = 0xFF;
+                map.data[y * size_x_ + x] = 0xFF;
             }
             else {
                 if (span == 0.0) {
-                    map.data[y * size_x + x] = -1;
-//                    map.data[y * size_x + x] = 100;
+                    map.data[y * size_x_ + x] = -1;
+//                    map.data[y * size_x_ + x] = 100;
                 }
                 else {
-                    map.data[y * size_x + x] = (100 * ((cost - min_cost) / span));
+                    map.data[y * size_x_ + x] = (100 * ((cost - min_cost) / span));
                 }
             }
         }
     }
 }
 
-void EP_wrapper::get_occupancy_grid_from_countmap(
+void ExplorationThread::get_occupancy_grid_from_countmap(
     const ExplorationPlanner::CountMap& countmap,
     const ros::Time& time,
     nav_msgs::OccupancyGrid& map) const
@@ -574,7 +678,7 @@ void EP_wrapper::get_occupancy_grid_from_countmap(
     return this->get_occupancy_grid_from_costmap(costmap, time, map);
 }
 
-void EP_wrapper::get_occupancy_grid_from_distance_transform(
+void ExplorationThread::get_occupancy_grid_from_distance_transform(
     const CoverageMap_c& coverage_map,
     int ridx,
     const ros::Time& now,
@@ -598,16 +702,17 @@ void EP_wrapper::get_occupancy_grid_from_distance_transform(
 }
 
 template<typename T>
-void EP_wrapper::get_point_cloud_from_map(const std::vector<T> &map, std::vector<pcl::PointXYZI> & points)
+void ExplorationThread::get_point_cloud_from_map(const std::vector<T> &map, std::vector<pcl::PointXYZI> & points)
 {
     std::vector<int> indicies;
     get_point_cloud_from_inner_dim(map, points, indicies, 0);
 }
 
 template<typename T>
-void EP_wrapper::get_point_cloud_from_inner_dim(
+void ExplorationThread::get_point_cloud_from_inner_dim(
     const std::vector<T>& map,
-    std::vector<pcl::PointXYZI>& points, std::vector<int> & indicies,
+    std::vector<pcl::PointXYZI>& points,
+    std::vector<int> & indicies,
     int depth)
 {
     size_t dim_size = map.size();
@@ -621,7 +726,7 @@ void EP_wrapper::get_point_cloud_from_inner_dim(
 }
 
 template<typename T>
-void EP_wrapper::get_point_cloud_from_inner_dim(
+void ExplorationThread::get_point_cloud_from_inner_dim(
     const T& val,
     std::vector<pcl::PointXYZI>& points,
     std::vector<int> & indicies,
@@ -631,15 +736,15 @@ void EP_wrapper::get_point_cloud_from_inner_dim(
     count++;
     pcl::PointXYZI point;
     if (depth > 0) {
-        point.x = discrete_to_continuous(indicies[0], resolution) + origin_x;
+        point.x = discrete_to_continuous(indicies[0], resolution_) + origin_x_;
     }
 
     if (depth > 1) {
-        point.y = discrete_to_continuous(indicies[1], resolution) + origin_y;
+        point.y = discrete_to_continuous(indicies[1], resolution_) + origin_y_;
     }
 
     if (depth > 2) {
-        point.z = discrete_to_continuous(indicies[2], resolution) + origin_z;
+        point.z = discrete_to_continuous(indicies[2], resolution_) + origin_z_;
     }
     point.intensity = static_cast<double>(val);
     if (point.intensity > 0) {
@@ -648,75 +753,18 @@ void EP_wrapper::get_point_cloud_from_inner_dim(
 }
 
 template<typename T>
-inline void EP_wrapper::get_point_cloud_from_points(const std::vector<T>& point_list, std::vector<pcl::PointXYZI>& points)
+inline void ExplorationThread::get_point_cloud_from_points(
+    const std::vector<T>& point_list,
+    std::vector<pcl::PointXYZI>& points)
 {
     //convert to 3d points
     for (auto & lp : point_list) {
         pcl::PointXYZI p;
-        p.x = discrete_to_continuous(lp.x, resolution) + origin_x;
-        p.y = discrete_to_continuous(lp.y, resolution) + origin_y;
-        p.z = discrete_to_continuous(lp.z, resolution) + origin_z;
+        p.x = discrete_to_continuous(lp.x, resolution_) + origin_x_;
+        p.y = discrete_to_continuous(lp.y, resolution_) + origin_y_;
+        p.z = discrete_to_continuous(lp.z, resolution_) + origin_z_;
         p.intensity = lp.cost;
         points.push_back(p);
     }
 }
 
-bool EP_wrapper::construct_robot_from_config(XmlRpc::XmlRpcValue& params, double scale, Robot_c& robot)
-{
-    if (!params.hasMember("name")               || params["name"].getType() != XmlRpc::XmlRpcValue::TypeString ||
-        !params.hasMember("motionheight")       || params["motionheight"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
-        !params.hasMember("motionlevelbottom")  || params["motionlevelbottom"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
-        !params.hasMember("motionleveltop")     || params["motionleveltop"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
-        !params.hasMember("sensorheight")       || params["sensorheight"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
-        !params.hasMember("horizontalfov_degs") || params["horizontalfov_degs"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
-        !params.hasMember("verticalfov_degs")   || params["verticalfov_degs"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
-        !params.hasMember("detectionrange")     || params["detectionrange"].getType() != XmlRpc::XmlRpcValue::TypeDouble ||
-        !params.hasMember("circularsize")       || params["circularsize"].getType() != XmlRpc::XmlRpcValue::TypeDouble)
-    {
-        ROS_ERROR("Robot config does not support minimum requirements");
-        return false;
-    }
-
-    double robot_motionheight;
-    double robot_motionlevelbottom;
-    double robot_motionleveltop;
-    double robot_sensorheight;
-    double robot_detectionrange;
-    double robot_circularsize;
-
-    robot_motionheight = double(params["motionheight"]);
-    robot_motionlevelbottom = double(params["motionlevelbottom"]);
-    robot_motionleveltop = double(params["motionleveltop"]);
-    robot_sensorheight = double(params["sensorheight"]);
-    robot_detectionrange = double(params["detectionrange"]);
-    robot_circularsize = double(params["circularsize"]);
-
-    robot.HorizontalFOV_ = double(params["horizontalfov_degs"]);
-    robot.VerticalFOV_ = double(params["verticalfov_degs"]);
-    robot.HorizontalFOV_ *= M_PI / 180.0;
-    robot.VerticalFOV_ *= M_PI / 180.0;
-
-    robot.name = std::string(params["name"]);
-    robot.MotionHeight_         = (uint)(robot_motionheight / resolution);
-    robot.MotionLevelBottom_    = (uint)(robot_motionlevelbottom / resolution);
-    robot.MotionLevelTop_       = (uint)(robot_motionleveltop / resolution);
-    robot.SensorHeight_         = (uint)(robot_sensorheight / resolution);
-    robot.DetectionRange_       = (uint)(robot_detectionrange / resolution);
-    robot.CircularSize_         = (uint)(robot_circularsize / resolution);
-
-    return true;
-}
-
-void EP_wrapper::log_robots(const std::vector<Robot_c>& robots)
-{
-    ROS_INFO("Robots:");
-    for (const Robot_c& robot : robots) {
-        ROS_INFO("  %s", robot.name.c_str());
-        ROS_INFO("    Vertical FOV: %0.3f", robot.VerticalFOV_);
-        ROS_INFO("    Horizontal FOV: %0.3f", robot.HorizontalFOV_);
-        ROS_INFO("    Circular Size: %u", robot.CircularSize_);
-        ROS_INFO("    Detection Range: %u", robot.DetectionRange_);
-        ROS_INFO("    Motion Height: %u", robot.MotionHeight_);
-        ROS_INFO("    Sensor Height: %u", robot.SensorHeight_);
-    }
-}

@@ -1,5 +1,5 @@
+executive_rate: 2.0
 planner_rate: 0.5
-scale: 20.0
 
 #map params
 frame_id: /map
@@ -19,11 +19,6 @@ resolution: 0.10
 #numangles:
 #mindist: 
 backwards_penalty: 10.0
-
-#topic name params
-goal_topic: /robot_goals
-map_topic: /merged_map 
-pose_topic: /robot_poses
 
 robot_params: [
     {
