@@ -30,7 +30,7 @@ robot_params: [
         name: "segbot",
         motionheight: 0.32,
         motionlevelbottom: 0.32,
-        motionleveltop: 0.5, # todo: measure the maximum height of the robot
+        motionleveltop: 0.8, # todo: measure the maximum height of the robot
         sensorheight: 0.32,
         horizontalfov_degs: 22.5,
         verticalfov_degs: 18.0,
