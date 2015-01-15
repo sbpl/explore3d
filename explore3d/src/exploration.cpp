@@ -228,17 +228,27 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
     CKey startkey = CreateKey(start_state.cost());
     OPEN.insertheap(&start_state, startkey);
 
+    // TODO: fixme to take in cost parameter in cells derived from meters
+    const double preferred_min_distance_cells = 3; 
+
     auto compute_motion_penalty = [&](const SearchPtState& s, const SearchPtState& t)
     {
         // Capture a bunch of hacky rules about traversal costs between states
-        int dx = t.x() - start.x;
-        int dy = t.y() - start.y;
+        const int dx = t.x() - start.x;
+        const int dy = t.y() - start.y;
         double end_theta = atan2((double)dy, (double)dx);
         double start_theta = DiscTheta2Cont(start.theta, NumAngles_);
         double angle_diff = computeMinUnsignedAngleDiff(end_theta, start_theta);
         double final_backwards_penalty = backwards_penalty_ * angle_diff / M_PI;
 
-        return std::max(final_backwards_penalty, 1.0);
+        double distance = sqrt((double)(dx * dx + dy * dy));
+        const double arbitrary_short_distance_penalty = 1000.0;
+        double close_penalty = 1.0; // = distance < (double)preferred_min_distance_cells ? arbitrary_short_distance_penalty : 1.0;
+        if (distance < (double)preferred_min_distance_cells) {
+            close_penalty = arbitrary_short_distance_penalty;
+        }
+
+        return std::max({ close_penalty, final_backwards_penalty, 1.0 });
     };
 
     while (!OPEN.emptyheap()) {
@@ -279,6 +289,26 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
     for (std::size_t x = 0; x < costmap.size(0); ++x) {
         for (std::size_t y = 0; y < costmap.size(1); ++y) {
             costmap(x, y) = states(x, y).cost();
+        }
+    }
+
+    // disallow sending goals right up your butt
+    const int neighbor = 4;
+    const CostType FUCKTON = 10000.0;
+    for (int x = -neighbor; x <= neighbor; ++x) {
+        for (int y = -neighbor; y <= neighbor; ++y) {
+            double dist = sqrt((double)(x * x + y * y));
+            if (dist > neighbor) {
+                continue;
+            }
+            int x_coord = start.x + x;
+            int y_coord = start.y + y;
+            if (x_coord < 0 || x_coord > costmap.size(0) -1 || y_coord < 0 || y_coord > costmap.size(1) -1) {
+                continue;
+            }
+            else {
+                costmap(x_coord, y_coord) = FUCKTON;
+            }
         }
     }
 }
@@ -328,7 +358,7 @@ void ExplorationPlanner::CreateFrontier(void)
                         auto score = EvalFxn(xidx, yidx, goal_[ridx].z, aidx, ridx);
                         scores_[ridx](xidx, yidx, aidx) = score;
                         if (score > goal_[ridx].cost) {
-                            goal_[ridx].cost = score; //counts_[ridx](xidx, yidx, aidx) / CostToPts_[ridx](xidx, yidx);
+                            goal_[ridx].cost = score;
                             goal_[ridx].x = xidx;
                             goal_[ridx].y = yidx;
                             goal_[ridx].theta = aidx;
