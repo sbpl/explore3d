@@ -701,7 +701,7 @@ bool EP_wrapper::construct_robot_from_config(XmlRpc::XmlRpcValue& params, double
     robot.MotionLevelBottom_    = (uint)(robot_motionlevelbottom / resolution);
     robot.MotionLevelTop_       = (uint)(robot_motionleveltop / resolution);
     robot.SensorHeight_         = (uint)(robot_sensorheight / resolution);
-    robot.DetectionRange_       = (uint)(robot_detectionrange);
+    robot.DetectionRange_       = (uint)(robot_detectionrange / resolution);
     robot.CircularSize_         = (uint)(robot_circularsize / resolution);
 
     return true;
