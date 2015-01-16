@@ -58,12 +58,12 @@ ExplorationThread::~ExplorationThread()
 
 bool ExplorationThread::initialize()
 {
-    ph_.param("planner_rate_hz_", planner_rate_hz_, 0.5);
+    ph_.param("planner_rate_hz", planner_rate_hz_, 0.5);
 
     if (!this->read_map_params()) {
         return false;
     }
-    ROS_INFO("dims is %d %d %d", size_x_, size_y_, size_z_);
+    ROS_INFO("dims are %d %d %d", size_x_, size_y_, size_z_);
     ROS_INFO("resolution_ is %f", resolution_);
 
     if (!this->read_cost_params()) {
@@ -273,12 +273,13 @@ bool ExplorationThread::read_map_params()
     ph_.param<double>("origin_x", origin_x_, 0);
     ph_.param<double>("origin_y", origin_y_, 0);
     ph_.param<double>("origin_z", origin_z_, 0);
-    ph_.param<double>("resolution_", resolution_, 0.5);
+    ph_.param<double>("resolution", resolution_, 0.5);
     ph_.param<int>("numangles", numangles, 16); // number of thetas
 
     params_.size_x = size_x_;
     params_.size_y = size_y_;
     params_.size_z = size_z_;
+    params_.NumAngles = numangles;
     angle_resolution_ = (2 * M_PI) / numangles;
     return true;
 }
@@ -312,7 +313,7 @@ bool ExplorationThread::read_robot_params()
 bool ExplorationThread::read_cost_params()
 {
     const double scale = 20.0;
-    int objectmaxelev, obs, freespace, unk, numangles, mindist;
+    int objectmaxelev, obs, freespace, unk, mindist;
     double backwards_penalty;
     ph_.param<int>("objectmaxelev", objectmaxelev, (uint) 1.5 * scale); // max height to consider for the OOI (cells)
     ph_.param<int>("obsvalue", obs, 100); // values for obstacles, freespace, unknown
@@ -325,7 +326,6 @@ bool ExplorationThread::read_cost_params()
     params_.obs = obs;
     params_.freespace = freespace;
     params_.unk = unk;
-    params_.NumAngles = numangles;
     params_.MinDist = mindist;
     params_.backwards_penalty = backwards_penalty;
     return true;
