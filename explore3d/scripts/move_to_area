@@ -1,0 +1,19 @@
+#!/usr/bin/env python
+
+import rospy
+from utacc_msgs.msg import MissionCommand, MissionCodes
+
+if __name__ == '__main__':
+    rospy.init_node('move_to_area')
+    pub = rospy.Publisher('e2_async_info', MissionCommand)
+    rate = rospy.Rate(1)
+    while not rospy.is_shutdown():
+        move_to_are_cmd = MissionCommand()
+        move_to_are_cmd.header.seq = 0
+        move_to_are_cmd.header.stamp = rospy.Time.now()
+        move_to_are_cmd.header.frame_id = ''
+        move_to_are_cmd.address = MissionCodes.MMEP_UUID
+        move_to_are_cmd.msg = MissionCodes.MOVE_TO_AREA
+        pub.publish(move_to_are_cmd)
+        rate.sleep()
+    
