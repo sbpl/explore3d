@@ -30,6 +30,8 @@ public:
     void update_map(const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& cloud);
     void update_poses(const nav_msgs::PathConstPtr& robot_poses);
 
+    bool ready_to_plan() const;
+
     /// @brief Asynchronously compute new goals given the current map and robot poses
     /// @return Whether the planner is ready to run (currently, has received a map and poses)
     typedef std::function<void(nav_msgs::Path& goal_poses)> GoalPosesCallback;
@@ -100,8 +102,6 @@ private:
     bool initialized() const;
 
     void plannerthread();
-
-    bool ready_to_plan() const;
 
     template<typename T> bool bounds_check(const T & point) const;
 
