@@ -28,6 +28,12 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 #target_link_libraries(${PROJECT_NAME} another_library)
 #rosbuild_add_boost_directories()
 #rosbuild_link_boost(${PROJECT_NAME} thread)
+
+find_package(PkgConfig REQUIRED)
+find_package(sbpl REQUIRED)
+include_directories(${SBPL_INCLUDE_DIRS})
+link_directories(${SBPL_LIBRARY_DIRS})
+
 rosbuild_add_executable(
     explore3d
     src/coverage_map.cpp
@@ -36,5 +42,5 @@ rosbuild_add_executable(
     src/exploration_main.cpp
     src/exploration_structs.cpp
     src/raycast.cpp)
-target_link_libraries(explore3d sbpl)
-#target_link_libraries(example ${PROJECT_NAME})
+target_link_libraries(${PROJECT_NAME} ${SBPL_LIBRARIES})
+
