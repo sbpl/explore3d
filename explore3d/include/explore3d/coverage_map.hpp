@@ -3,8 +3,8 @@
 
 #include <vector>
 
-#include "Grid.h"
-#include "exploration_structs.hpp"
+#include <explore3d/Grid.h>
+#include <explore3d/exploration_structs.hpp>
 
 /// @brief Maintains a three-dimensional obstacle map along with a two-dimensional distance transform for each robot at
 ///        the robot's primary motion height.

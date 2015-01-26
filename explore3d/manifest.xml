@@ -17,4 +17,8 @@
   <depend package="std_msgs"/>
   <depend package="std_srvs"/>
   <depend package="utacc_msgs"/>
+
+  <export>
+    <cpp cflags="-I${prefix}/include" lflags="-L${prefix}/lib -lexplore3d"/>
+  </export>
 </package>

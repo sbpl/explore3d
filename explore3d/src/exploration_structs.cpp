@@ -1,4 +1,4 @@
-#include "exploration_structs.hpp"
+#include <explore3d/exploration_structs.hpp>
 
 #include <sstream>
 

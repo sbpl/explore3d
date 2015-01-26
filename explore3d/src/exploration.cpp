@@ -1,6 +1,6 @@
 /// 3-D Exploration Library
 /// (c) 2014 Jonathan Michael Butzke
-#include "exploration.hpp"
+#include <explore3d/exploration.hpp>
 
 /* inputs:
  * h *eight of hexa flight
@@ -29,7 +29,7 @@
 
 #include <ros/console.h>
 #include <sbpl/headers.h>
-#include "Grid.h"
+#include <explore3d/Grid.h>
 
 void ExplorationPlanner::Init(ExpParams_c initparams)
 {
@@ -229,7 +229,7 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
     OPEN.insertheap(&start_state, startkey);
 
     // TODO: fixme to take in cost parameter in cells derived from meters
-    const double preferred_min_distance_cells = 3; 
+    const double preferred_min_distance_cells = 3;
 
     auto compute_motion_penalty = [&](const SearchPtState& s, const SearchPtState& t)
     {

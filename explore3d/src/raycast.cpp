@@ -1,4 +1,4 @@
-#include "exploration.hpp"
+#include <explore3d/exploration.hpp>
 
 /* Functions written by Jonathan Michael Butzke except where otherwise indicated
  * uses Bresenham line algorithm for rays

@@ -13,34 +13,19 @@ set(ROS_BUILD_TYPE Release)
 
 rosbuild_init()
 
-#set the default path for built executables to the "bin" directory
-set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
-#set the default path for built libraries to the "lib" directory
-#set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
-
-#uncomment if you have defined messages
-#rosbuild_genmsg()
-#uncomment if you have defined services
-#rosbuild_gensrv()
-
-#common commands for building c++ executables and libraries
-#rosbuild_add_library(${PROJECT_NAME} src/example.cpp)
-#target_link_libraries(${PROJECT_NAME} another_library)
-#rosbuild_add_boost_directories()
-#rosbuild_link_boost(${PROJECT_NAME} thread)
+set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 find_package(PkgConfig REQUIRED)
 find_package(sbpl REQUIRED)
 include_directories(${SBPL_INCLUDE_DIRS})
 link_directories(${SBPL_LIBRARY_DIRS})
 
-rosbuild_add_executable(
+rosbuild_add_library(
     explore3d
     src/coverage_map.cpp
     src/exploration.cpp
-    src/exploration_executive.cpp
     src/exploration_main.cpp
     src/exploration_structs.cpp
     src/raycast.cpp)
-target_link_libraries(${PROJECT_NAME} ${SBPL_LIBRARIES})
 
+target_link_libraries(${PROJECT_NAME} ${SBPL_LIBRARIES})
