@@ -670,7 +670,7 @@ void ExplorationThread::get_occupancy_grid_from_countmap(
     for (std::size_t x = 0; x < countmap.size(0); ++x) {
         for (std::size_t y = 0; y < countmap.size(1); ++y) {
             for (std::size_t a = 0; a < countmap.size(2); ++a) {
-                costmap(x, y) += std::max(costmap(x, y), countmap(x, y, a)); //countmap(x, y, a);
+                costmap(x, y) = std::max(costmap(x, y), countmap(x, y, a)); //countmap(x, y, a);
             }
         }
     }

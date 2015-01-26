@@ -112,8 +112,8 @@ void CoverageMap_c::UpdateDistances()
 
         uint robot_size = (*robotsPtr_)[ridx].CircularSize_;
         for (auto it = DistToObs_[ridx].begin(); it != DistToObs_[ridx].end(); ++it) {
-            if (*it > 100 * robot_size) {
-                *it = 100 * robot_size;
+            if (*it > 100 * (int)robot_size) {
+                *it = 100 * (int)robot_size;
             }
         }
     }
@@ -130,11 +130,11 @@ void CoverageMap_c::UpdateMotionLevelMaps(int x, int y, int z, char val)
     for (std::size_t i = 0; i < robotsPtr_->size(); ++i) {
         const Robot_c& robot = (*robotsPtr_)[i];
         au::Grid<2, char>& motion_level_map = robot_motion_level_maps_[i];
-        if (z >= robot.MotionLevelBottom_ && z <= robot.MotionLevelTop_) {
+        if (z >= (int)robot.MotionLevelBottom_ && z <= (int)robot.MotionLevelTop_) {
             if (val == OBS) {
                 motion_level_map(x, y) = OBS;
             }
-            else if (z == robot.MotionHeight_){
+            else if (z == (int)robot.MotionHeight_){
                 motion_level_map(x, y) = map_(x, y, z);
             }
         }

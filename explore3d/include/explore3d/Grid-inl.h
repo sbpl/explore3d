@@ -564,6 +564,12 @@ auto Grid<N, T>::GridIterator::operator*() -> value_type&
 }
 
 template <int N, typename T>
+auto Grid<N, T>::GridIterator::operator->() -> value_type*
+{
+    return grid_->at(curr_);
+}
+
+template <int N, typename T>
 auto Grid<N, T>::GridIterator::operator--() -> GridIterator&
 {
     // TODO: implement
