@@ -293,7 +293,7 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
     }
 
     // disallow sending goals right up your butt
-    const int neighbor = 4;
+    const int neighbor = 8;
     const CostType FUCKTON = 10000.0;
     for (int x = -neighbor; x <= neighbor; ++x) {
         for (int y = -neighbor; y <= neighbor; ++y) {
