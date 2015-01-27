@@ -267,13 +267,13 @@ bool ExplorationThread::read_map_params()
 {
     int numangles;
     ph_.param<std::string>("frame_id", frame_id_, "/map");
-    ph_.param<int>("size_x", size_x_, 500);
-    ph_.param<int>("size_y", size_y_, 500);
-    ph_.param<int>("size_z", size_z_, 50);
-    ph_.param<double>("origin_x", origin_x_, 0);
-    ph_.param<double>("origin_y", origin_y_, 0);
-    ph_.param<double>("origin_z", origin_z_, 0);
-    ph_.param<double>("resolution", resolution_, 0.5);
+    ph_.param<int>("map_size_x", size_x_, 500);
+    ph_.param<int>("map_size_y", size_y_, 500);
+    ph_.param<int>("map_size_z", size_z_, 50);
+    ph_.param<double>("map_origin_x", origin_x_, 0);
+    ph_.param<double>("map_origin_y", origin_y_, 0);
+    ph_.param<double>("map_origin_z", origin_z_, 0);
+    ph_.param<double>("map_resolution", resolution_, 0.5);
     ph_.param<int>("numangles", numangles, 16); // number of thetas
 
     params_.size_x = size_x_;
