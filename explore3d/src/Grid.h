@@ -162,7 +162,7 @@ public:
         bool operator!=(const GridIterator& other) const;
 
         value_type& operator*();
-        value_type& operator->();
+        value_type* operator->();
 
         GridIterator& operator--();
         GridIterator operator--(int);

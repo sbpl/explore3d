@@ -27,6 +27,7 @@
 // if not
 // go to closest
 
+#include <cassert>
 #include <ros/console.h>
 #include <sbpl/headers.h>
 #include "Grid.h"
@@ -89,7 +90,7 @@ void ExplorationPlanner::GenVisibilityRing(void)
             if (radius < 2) {
                 radius = 2;
             }
-            printf("robot %i height=%f radius = %f\n", ridx, height, radius);
+            printf("robot %i height=%f radius = %f\n", (int)ridx, height, radius);
             if (radius < robots_[ridx].DetectionRange_) {
                 pts2d temp_pt;
                 for (double aidx = 0; aidx < 2 * M_PI; aidx += 0.01) {
@@ -107,7 +108,7 @@ void ExplorationPlanner::GenVisibilityRing(void)
                 it = std::unique(VisibilityRings_[ridx][zidx].begin(), VisibilityRings_[ridx][zidx].end(), ptscompare);
                 VisibilityRings_[ridx][zidx].resize(std::distance(VisibilityRings_[ridx][zidx].begin(), it));
                 for (const auto& ring : VisibilityRings_[ridx][zidx]) {
-                    printf("r%i z%i x%i y%i a%i\n", ridx, zidx, ring.x, ring.y, ring.theta);
+                    printf("r%i z%i x%i y%i a%i\n", (int)ridx, (int)zidx, ring.x, ring.y, ring.theta);
                 }
             }
         }
@@ -116,15 +117,9 @@ void ExplorationPlanner::GenVisibilityRing(void)
 
 void ExplorationPlanner::ClearCounts(void)
 {
-    for (size_t ridx = 0; ridx < robots_.size(); ridx++) {
-        for (uint xidx = 0; xidx < coverage_.x_size_; xidx++) {
-            for (uint yidx = 0; yidx < coverage_.y_size_; yidx++) {
-                for (uint aidx = 0; aidx < NumAngles_; aidx++) {
-                    counts_[ridx](xidx, yidx, aidx) = 0;
-                    scores_[ridx](xidx, yidx, aidx) = 0;
-                }
-            }
-        }
+    for (size_t ridx = 0; ridx < robots_.size(); ++ridx) {
+        counts_[ridx].assign(0.0);
+        scores_[ridx].assign(0.0);
     }
 }
 
@@ -294,7 +289,7 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
 
     // disallow sending goals right up your butt
     const int neighbor = 8;
-    const CostType FUCKTON = 10000.0;
+    const CostType FUCKTON = MaxCost;
     for (int x = -neighbor; x <= neighbor; ++x) {
         for (int y = -neighbor; y <= neighbor; ++y) {
             double dist = sqrt((double)(x * x + y * y));
@@ -303,7 +298,8 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
             }
             int x_coord = start.x + x;
             int y_coord = start.y + y;
-            if (x_coord < 0 || x_coord > costmap.size(0) -1 || y_coord < 0 || y_coord > costmap.size(1) -1) {
+            if (x_coord < 0 || x_coord > (int)costmap.size(0) - 1 || y_coord < 0 || y_coord > (int)costmap.size(1) - 1)
+            {
                 continue;
             }
             else {
@@ -315,10 +311,17 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
 
 CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn)
 {
+    if (CostToPts_[rn](x, y) == MaxCost) {
+        return 0;
+    }
+
     double dist = 1e99;
     for (size_t ridx = 0; ridx < goal_.size(); ridx++) {
         if (ridx != rn) {
-            double temp_dist = (x - goal_[ridx].x) * (x - goal_[ridx].x) + (y - goal_[ridx].y) * (y - goal_[ridx].y) + (z - goal_[ridx].z) * (z - goal_[ridx].z);
+            double temp_dist =
+                    (x - goal_[ridx].x) * (x - goal_[ridx].x) +
+                    (y - goal_[ridx].y) * (y - goal_[ridx].y) +
+                    (z - goal_[ridx].z) * (z - goal_[ridx].z);
             if (temp_dist < dist) {
                 dist = temp_dist;
             }
@@ -332,8 +335,7 @@ CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn)
         dist = 1;
     }
 
-    CostType rtnval = counts_[rn](x, y, a) / CostToPts_[rn](x, y) * dist;
-    return rtnval;
+    return counts_[rn](x, y, a) / CostToPts_[rn](x, y) * dist;
 }
 
 void ExplorationPlanner::CreateFrontier(void)
@@ -349,25 +351,18 @@ void ExplorationPlanner::CreateFrontier(void)
 
         goal_[ridx].cost = 0;
         goal_[ridx].z = robots_[ridx].MotionHeight_;
-        //printf("z is %i\n", goal_[ridx].z);
-        for (size_t xidx = 0; xidx < coverage_.x_size_; xidx++) {
-            for (size_t yidx = 0; yidx < coverage_.y_size_; yidx++) {
-                for (uint aidx = 0; aidx < NumAngles_; aidx++) {
-                    if (CostToPts_[ridx](xidx, yidx) != MaxCost)
-                    {
-                        auto score = EvalFxn(xidx, yidx, goal_[ridx].z, aidx, ridx);
-                        scores_[ridx](xidx, yidx, aidx) = score;
-                        if (score > goal_[ridx].cost) {
-                            goal_[ridx].cost = score;
-                            goal_[ridx].x = xidx;
-                            goal_[ridx].y = yidx;
-                            goal_[ridx].theta = aidx;
-                            // printf("new goal: r%li x%li y%li z%i a%i count:%i cost:%f total:%f  obs:%f\n", ridx, xidx, yidx, goal_[ridx].z, aidx,counts_[ridx][xidx][yidx][aidx], CostToPts_[ridx][xidx][yidx], goal_[ridx].cost, coverage_.ReturnDistToObs(ridx, xidx, yidx) );
-                        }
-                    }
-                }
-            }
+
+        for (auto sit = scores_[ridx].begin(); sit != scores_[ridx].end(); ++sit) {
+            (*sit) = this->EvalFxn(sit.coord(0), sit.coord(1), goal_[ridx].z, sit.coord(2), ridx);
         }
+
+        auto maxe = std::max_element(scores_[ridx].begin(), scores_[ridx].end());
+        assert(maxe != scores_[ridx].end());
+
+        goal_[ridx].cost = *maxe;
+        goal_[ridx].x = maxe.coord(0);
+        goal_[ridx].y = maxe.coord(1);
+        goal_[ridx].theta = maxe.coord(2);
     }
 }
 
@@ -377,18 +372,9 @@ std::vector<Locations_c> ExplorationPlanner::NewGoals(
     for (size_t ridx = 0; ridx < RobotLocations.size(); ridx++) {
         RobotLocations[ridx].z = robots_[ridx].MotionHeight_;
         Dijkstra(RobotLocations[ridx], ridx);
-        //printMap(RobotLocations[ridx].z);
     }
 
     CreateFrontier();
-
-    // for (uint ridx =0; ridx < robots_.size(); ridx++) {
-    //   printf("Robot %i\n", ridx);
-    //   for (uint pidx=0; pidx < VisibilityRings_[ridx][robots_[ridx].SensorHeight_].size(); pidx++) {
-    //     printf("(%i %i)", VisibilityRings_[ridx][robots_[ridx].SensorHeight_][pidx].x, VisibilityRings_[ridx][robots_[ridx].SensorHeight_][pidx].y);
-    //   }
-    //   printf("\n");
-    // }
 
     std::vector<Locations_c> goals;
     goals.resize(robots_.size());
@@ -397,7 +383,6 @@ std::vector<Locations_c> ExplorationPlanner::NewGoals(
         goals[ridx].y = goal_[ridx].y;
         goals[ridx].z = goal_[ridx].z;
         goals[ridx].theta = goal_[ridx].theta;
-//        printf("goals r%li X%i Y%i Z%i a%i cost:%f\n", ridx, goals[ridx].x, goals[ridx].y, goals[ridx].z, goals[ridx].theta, goal_[ridx].cost);
     }
     return goals;
 }
