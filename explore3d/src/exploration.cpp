@@ -335,7 +335,7 @@ CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn)
         dist = 1;
     }
 
-    return counts_[rn](x, y, a) / CostToPts_[rn](x, y) * dist;
+    return counts_[rn](x, y, a) * CostToPts_[rn](x, y) * dist;
 }
 
 void ExplorationPlanner::CreateFrontier(void)
