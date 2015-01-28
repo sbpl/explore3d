@@ -1,24 +1,24 @@
 <package>
   <description brief="explore3d">
-
      explore3d
-
   </description>
   <author>jmb</author>
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
   <url>http://ros.org/wiki/explore3d</url>
-  <depend package="roscpp"/>
-  <depend package="rospy"/>
-  <depend package="std_msgs"/>
-  <depend package="sensor_msgs"/>
+
   <depend package="nav_msgs"/>
-  <depend package="std_srvs"/>
-  <depend package="std_msgs"/>
   <!-- <depend package="pcl"/> -->
   <depend package="pcl_ros"/>
+  <depend package="roscpp"/>
+  <depend package="rospy"/>
+  <depend package="sensor_msgs"/>
+  <depend package="std_msgs"/>
+  <depend package="std_msgs"/>
+  <depend package="std_srvs"/>
+  <depend package="utacc_msgs"/>
 
-
+  <export>
+    <cpp cflags="-I${prefix}/include" lflags="-L${prefix}/lib -lexplore3d"/>
+  </export>
 </package>
-
-

@@ -10,9 +10,9 @@
 #include <mutex>
 #include <thread>
 
-#include "Grid.h"
-#include "coverage_map.hpp"
-#include "exploration_structs.hpp"
+#include <explore3d/Grid.h>
+#include <explore3d/coverage_map.hpp>
+#include <explore3d/exploration_structs.hpp>
 
 class ExpParams_c
 {

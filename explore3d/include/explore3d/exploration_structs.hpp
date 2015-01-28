@@ -26,6 +26,13 @@ public:
   unsigned char data;
 };
 
+class Pose3d
+{
+public:
+  
+    double x, y, z, theta;
+};
+
 class Locations_c
 {
 public:

@@ -1,4 +1,4 @@
-#include "coverage_map.hpp"
+#include <explore3d/coverage_map.hpp>
 
 bool CoverageMap_c::Init(
     uint x, uint y, uint z,
