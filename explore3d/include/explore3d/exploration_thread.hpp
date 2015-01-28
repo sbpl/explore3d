@@ -1,5 +1,9 @@
 /// Jonathan Butzke
 ///(c) 2014 Ros wrapper header
+
+#ifndef ExplorationThread_h
+#define ExplorationThread_h
+
 #include "exploration.hpp"
 #include <ros/ros.h>
 #include <nav_msgs/Path.h>
@@ -160,3 +164,6 @@ private:
 
     void publish_planner_maps();
 };
+
+#endif
+

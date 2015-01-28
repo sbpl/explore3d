@@ -2,7 +2,7 @@
 ///(c) 2014
 ///ROS Wrapper for 3-D exploration module
 
-#include <explore3d/exploration_main.hpp>
+#include <explore3d/exploration_thread.hpp>
 
 #include <cassert>
 #include <chrono>
