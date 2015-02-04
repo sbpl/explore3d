@@ -251,7 +251,12 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
         curr->set_closed(true);
 
         for (size_t midx = 0; midx < mp_.size(); midx++) {
-            SearchPtState& succ = states(curr->x() + mp_[midx].x, curr->y() + mp_[midx].y);
+            int succ_x = curr->x() + mp_[midx].x;
+            int succ_y = curr->y() + mp_[midx].y;
+            if (succ_x < 0 || succ_y < 0 || succ_x >= states.size(0) || succ_y >= states.size(1)) {
+                continue;
+            }
+            SearchPtState& succ = states(succ_x, succ_y);
 
             const int robot_size = robots_[robotnum].CircularSize_;
             bool is_valid = coverage_.OnInflatedMap(succ.x(), succ.y(), succ.z(), robotnum, robot_size);
