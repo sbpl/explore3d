@@ -106,24 +106,27 @@ void ExplorationThread::shutdown()
 
 void ExplorationThread::update_map(const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& cloud)
 {
-    MapElement_c pt;
     for (size_t pidx = 0; pidx < cloud->points.size(); pidx++) {
-        //convert coordinates to discrete in map frame
+        // convert coordinates to discrete in map frame
+        MapElement_c pt;
         pt.x = continuous_to_discrete(cloud->points[pidx].x - origin_x_, resolution_);
         pt.y = continuous_to_discrete(cloud->points[pidx].y - origin_y_, resolution_);
         pt.z = continuous_to_discrete(cloud->points[pidx].z - origin_z_, resolution_);
-        pt.data = cloud->points[pidx].intensity;
+        // pt.data = cloud->points[pidx].intensity;
 
-        //dont add points outside of map bounds
+        // dont add points outside of map bounds
         if (!bounds_check(pt)) {
             continue;
         }
 
-        curr_map_points_.push_back(pt);
+        // only keep around unique coordinates with the most recent data field
+        std::pair<std::map<MapElement_c, unsigned char, MapElementCompare>::iterator, bool> res =
+                curr_map_points_.insert(std::make_pair(pt, 0x00));
+        res.first->second = cloud->points[pidx].intensity;
     }
 
     got_first_map_update_ = true;
-    ROS_DEBUG("map upate callback finished");
+    // ROS_DEBUG("map upate callback finished");
 }
 
 void ExplorationThread::update_poses(const nav_msgs::PathConstPtr& robot_poses)
@@ -180,7 +183,13 @@ bool ExplorationThread::compute_goals(const GoalPosesCallback& goal_poses_callba
     if (this->ready_to_plan()) {
         ROS_INFO("Request to compute goals received");
         plannerthread_curr_locations_ = curr_locations_;
-        plannerthread_map_points_ = curr_map_points_;
+        plannerthread_map_points_.clear();
+        plannerthread_map_points_.reserve(curr_map_points_.size());
+        for (const auto& entry : curr_map_points_) {
+            MapElement_c e = entry.first;
+            e.data = entry.second;
+            plannerthread_map_points_.push_back(e);
+        }
         goals_requested_ = true;
         goal_poses_callback_ = goal_poses_callback;
         return true;
@@ -551,7 +560,7 @@ void ExplorationThread::get_occupancy_grid_from_coverage_map(
     const ros::Time& time,
     nav_msgs::OccupancyGrid& map) const
 {
-    assert(EP_.coverage_.x_size_ == size_x_ && EP_.coverage_.y_size_ == size_y_);
+    assert((int)EP_.coverage_.x_size_ == size_x_ && (int)EP_.coverage_.y_size_ == size_y_);
 
     map.header.frame_id = frame_id_;
     map.header.stamp = time;
@@ -564,8 +573,8 @@ void ExplorationThread::get_occupancy_grid_from_coverage_map(
     map.info.resolution = resolution_;
     map.data.resize(size_x_ * size_y_);
 
-    for (std::size_t x = 0; x < size_x_; ++x) {
-        for (std::size_t y = 0; y < size_y_; ++y) {
+    for (std::size_t x = 0; x < (std::size_t)size_x_; ++x) {
+        for (std::size_t y = 0; y < (std::size_t)size_y_; ++y) {
             char val = EP_.coverage_.GetMotionLevelValue(ridx, x, y);
             if ((unsigned char)val == params_.unk) {
                 map.data[y * size_x_ + x] = -1;
@@ -757,7 +766,7 @@ inline void ExplorationThread::get_point_cloud_from_points(
     const std::vector<T>& point_list,
     std::vector<pcl::PointXYZI>& points)
 {
-    //convert to 3d points
+    // convert to 3d points
     for (auto & lp : point_list) {
         pcl::PointXYZI p;
         p.x = discrete_to_continuous(lp.x, resolution_) + origin_x_;
@@ -767,4 +776,3 @@ inline void ExplorationThread::get_point_cloud_from_points(
         points.push_back(p);
     }
 }
-

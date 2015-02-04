@@ -1,22 +1,27 @@
-/// Jonathan Butzke
+//// Jonathan Butzke
 ///(c) 2014 Ros wrapper header
 
 #ifndef ExplorationThread_h
 #define ExplorationThread_h
 
-#include "exploration.hpp"
-#include <ros/ros.h>
-#include <nav_msgs/Path.h>
-
-#include <sensor_msgs/PointCloud2.h>
-
-// PCL specific includes
-#include <pcl_ros/point_cloud.h>
-#include <pcl/point_types.h>
+#include <functional>
+#include <map>
+#include <mutex>
+#include <set>
+#include <string>
+#include <tuple>
+#include <vector>
 
 #include <nav_msgs/OccupancyGrid.h>
-
+#include <nav_msgs/Path.h>
+#include <pcl/point_types.h>
+#include <pcl_ros/point_cloud.h>
+#include <ros/ros.h>
+#include <sensor_msgs/PointCloud2.h>
 #include <tf/transform_listener.h>
+
+#include "exploration.hpp"
+#include "exploration_structs.hpp"
 
 // Assumptions:
 //   There is one main thread that is calling functions listed in the public API of this class.
@@ -46,13 +51,22 @@ public:
 
 private:
 
+    struct MapElementCompare
+    {
+        bool operator()(const MapElement_c& e, const MapElement_c& f) const
+        {
+            return std::tie(e.x, e.y, e.z) < std::tie(f.x, f.y, f.z);
+        }
+    };
+
     ros::NodeHandle nh_;
     ros::NodeHandle ph_;
 
     ExplorationPlanner EP_;
     ExpParams_c params_;
     std::vector<Locations_c> curr_locations_;
-    std::vector<MapElement_c> curr_map_points_;
+
+    std::map<MapElement_c, unsigned char, MapElementCompare> curr_map_points_;
 
     /// @name Mutex-guarded communication with planning thread
     /// @{
