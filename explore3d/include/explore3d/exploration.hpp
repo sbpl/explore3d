@@ -1,6 +1,9 @@
 /// 3-D Exploration Header
 /// (c) 2014 Jonathan Michael Butzke
 
+#ifndef ExplorationPlanner_h
+#define ExplorationPlanner_h
+
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -80,3 +83,5 @@ private:
     void printCounts(uint x0, uint y0, uint x1, uint y1, uint rn);
     CostType EvalFxn(uint x, uint y, uint z, uint a, uint rn);
 };
+
+#endif
