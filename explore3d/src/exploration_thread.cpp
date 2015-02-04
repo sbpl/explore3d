@@ -120,8 +120,7 @@ void ExplorationThread::update_map(const pcl::PointCloud<pcl::PointXYZI>::ConstP
         }
 
         // only keep around unique coordinates with the most recent data field
-        std::pair<std::map<MapElement_c, unsigned char, MapElementCompare>::iterator, bool> res =
-                curr_map_points_.insert(std::make_pair(pt, 0x00));
+        auto res = curr_map_points_.insert(std::make_pair(pt, 0x00));
         res.first->second = cloud->points[pidx].intensity;
     }
 
