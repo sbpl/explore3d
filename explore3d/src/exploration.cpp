@@ -196,18 +196,6 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
         bool closed_;
     };
 
-    // Preallocate search state table
-    au::Grid<2, SearchPtState> states(coverage_.x_size_, coverage_.y_size_);
-    for (std::size_t x = 0; x < states.size(0); ++x) {
-        for (std::size_t y = 0; y < states.size(1); ++y) {
-            states(x, y).set_x(x);
-            states(x, y).set_y(y);
-            states(x, y).set_z(start.z);
-            states(x, y).set_cost(MaxCost);
-            states(x, y).set_closed(false);
-        }
-    }
-
     auto CreateKey = [](double val) -> CKey
     {
         const int fpscale = 1000;
@@ -215,13 +203,6 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
         key.key[0] = fpscale * val;
         return key;
     };
-
-    SearchPtState& start_state = states(start.x, start.y);
-    start_state.set_cost(10.0);
-
-    CHeap OPEN;
-    CKey startkey = CreateKey(start_state.cost());
-    OPEN.insertheap(&start_state, startkey);
 
     // TODO: fixme to take in cost parameter in cells derived from meters
     const double preferred_min_distance_cells = 3;
@@ -246,6 +227,105 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
         return std::max({ close_penalty, final_backwards_penalty, 1.0 });
     };
 
+    // Preallocate search state table
+    au::Grid<2, SearchPtState> states(coverage_.x_size_, coverage_.y_size_);
+    for (std::size_t x = 0; x < states.size(0); ++x) {
+        for (std::size_t y = 0; y < states.size(1); ++y) {
+            states(x, y).set_x(x);
+            states(x, y).set_y(y);
+            states(x, y).set_z(start.z);
+            states(x, y).set_cost(MaxCost);
+            states(x, y).set_closed(false);
+        }
+    }
+
+    SearchPtState& start_state = states(start.x, start.y);
+    start_state.set_cost(0.0);
+
+    CHeap OPEN;
+    CKey startkey = CreateKey(start_state.cost());
+    OPEN.insertheap(&start_state, startkey);
+
+    Locations_c collision_free_start;
+    collision_free_start.x = -1;
+    collision_free_start.y = -1;
+    collision_free_start.z = -1;
+    collision_free_start.theta = -1;
+
+    // run a dijkstra search to find the nearest collision-free cell to the robot pose
+    while (!OPEN.emptyheap()) {
+        SearchPtState* curr = (SearchPtState*)OPEN.deleteminheap();
+        curr->set_closed(true);
+
+        const int robot_size = robots_[robotnum].CircularSize_;
+        const bool curr_is_valid = coverage_.OnInflatedMap(curr->x(), curr->y(), curr->z(), robotnum, robot_size);
+        // shouldn't this be redundant with the above check?
+        const bool is_freespace = curr_is_valid && coverage_.Getval(curr->x(), curr->y(), curr->z()) == FREESPACE; 
+        const bool is_valid = curr_is_valid && is_freespace;
+        if (is_valid) {
+            // assign the real collision-free start state and return from the search
+            collision_free_start.x = curr->x();
+            collision_free_start.y = curr->y();
+            collision_free_start.z = curr->z();
+            collision_free_start.theta = curr->theta();
+            ROS_ERROR("start-in-collision search found a goal with cost %0.3f", curr->cost());
+            break;
+        }
+
+        for (size_t midx = 0; midx < mp_.size(); midx++) {
+            int succ_x = curr->x() + mp_[midx].x;
+            int succ_y = curr->y() + mp_[midx].y;
+            if (succ_x < 0 || succ_y < 0 || succ_x >= (int)states.size(0) || succ_y >= (int)states.size(1)) {
+                continue;
+            }
+            SearchPtState& succ = states(succ_x, succ_y);
+
+            // remove is_valid check for start-in-collision search
+//            const int robot_size = robots_[robotnum].CircularSize_;
+//            bool is_valid = coverage_.OnInflatedMap(succ.x(), succ.y(), succ.z(), robotnum, robot_size);
+//            bool is_freespace = is_valid && coverage_.Getval(succ.x(), succ.y(), succ.z()) == FREESPACE;
+//            const bool valid = is_valid && is_freespace;
+//
+//            if (!valid) {
+//                continue;
+//            }
+
+            if (!succ.closed()) {
+                CostType succ_cost = succ.cost();
+                // note: remove arbitrary penalty
+                CostType new_cost = curr->cost() + /*compute_motion_penalty(*curr, succ) * */ mp_[midx].cost; 
+                if (new_cost < succ_cost) {
+                    succ.set_cost(new_cost);
+                    CKey succkey = CreateKey(new_cost);
+                    if (OPEN.inheap(&succ)) {
+                        OPEN.updateheap(&succ, succkey);
+                    }
+                    else {
+                        OPEN.insertheap(&succ, succkey);
+                    }
+                }
+            }
+        }
+    }
+
+    assert(collision_free_start.x >= 0 && collision_free_start.y >= 0 && collision_free_start.z >= 0 && collision_free_start.theta >= 0);
+    // TODO: check for above search successful termination
+    ROS_WARN("Robot pose is %s", to_string(start).c_str());
+    ROS_WARN("Collision free start is %s", to_string(collision_free_start).c_str());
+
+    // reset states and open list
+    for (SearchPtState& state : states) {
+       state.set_cost(MaxCost);
+       state.set_closed(false);
+    }
+
+    OPEN.makeemptyheap();
+
+    SearchPtState& collision_free_start_state = states(collision_free_start.x, collision_free_start.y);
+    collision_free_start_state.set_cost(10.0); // don't know why this is 10 but that's what's been there forever
+    CKey collision_free_start_key = CreateKey(collision_free_start_state.cost());
+    OPEN.insertheap(&collision_free_start_state, collision_free_start_key);
+
     while (!OPEN.emptyheap()) {
         SearchPtState* curr = (SearchPtState*)OPEN.deleteminheap();
         curr->set_closed(true);
@@ -260,7 +340,7 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
 
             const int robot_size = robots_[robotnum].CircularSize_;
             bool is_valid = coverage_.OnInflatedMap(succ.x(), succ.y(), succ.z(), robotnum, robot_size);
-            bool is_freespace = is_valid && coverage_.Getval(succ.x(), succ.y(), succ.z()) == FREESPACE;
+            bool is_freespace = is_valid && coverage_.Getval(succ.x(), succ.y(), succ.z()) == FREESPACE; // shouldn't this be redundant with the above check?
             const bool valid = is_valid && is_freespace;
 
             if (!valid) {
