@@ -106,7 +106,7 @@ private:
     };
 
     void PrecalcVisibilityCircles(void);
-    void Dijkstra(const Locations_c& start, int robotnum);
+    bool Dijkstra(const Locations_c& start, int robotnum);
     bool FindNearestCollisionFreeCell(const Locations_c& start, int robotnum, Locations_c& out);
     void CreateFrontier(void);
     void GenMotionSteps(void);

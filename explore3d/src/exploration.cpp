@@ -164,15 +164,14 @@ void ExplorationPlanner::printCounts(uint x0, uint y0, uint x1, uint y1, uint rn
     }
 }
 
-void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
+bool ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
 {
     // TODO: check if the nominal start state is free before even running this function (which temporarily will take up
     // resources in setting up search)
     Locations_c collision_free_start;
     if (!this->FindNearestCollisionFreeCell(start, robotnum, collision_free_start)) {
-        // TODO: return result indicating search unsuccessful termination
         ROS_ERROR("Failed to compute collision free start state");
-        return;
+        return false;
     }
 
     if (collision_free_start != start) {
@@ -266,10 +265,19 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
             }
         }
     }
+
+    return true;
 }
 
 bool ExplorationPlanner::FindNearestCollisionFreeCell(const Locations_c& start, int robotnum, Locations_c& out)
 {
+    const bool SEARCH_FOR_FREE_CELL = true;
+    if (!SEARCH_FOR_FREE_CELL) {
+        out = start;
+        return  coverage_.OnInflatedMap(start.x, start.y, start.z, robotnum, robots_[robotnum].CircularSize_) &&
+                coverage_.Getval(start.x, start.y, start.z) == FREESPACE;
+    }
+
     // Preallocate search state table
     au::Grid<2, SearchPtState> states(coverage_.x_size_, coverage_.y_size_);
     for (std::size_t x = 0; x < states.size(0); ++x) {
@@ -416,7 +424,10 @@ std::vector<Locations_c> ExplorationPlanner::NewGoals(
 {
     for (size_t ridx = 0; ridx < RobotLocations.size(); ridx++) {
         RobotLocations[ridx].z = robots_[ridx].MotionHeight_;
-        Dijkstra(RobotLocations[ridx], ridx);
+        if (!Dijkstra(RobotLocations[ridx], ridx)) {
+            ROS_ERROR("Failed to compute cell cost expansion");
+            return { };
+        }
     }
 
     CreateFrontier();

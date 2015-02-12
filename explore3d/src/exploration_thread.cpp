@@ -24,7 +24,7 @@ ExplorationThread::ExplorationThread() :
     data_mutex_(),
     plannerthread_curr_locations_(),
     plannerthread_map_points_(),
-    goal_poses_callback_(),
+    result_callback_(),
     last_goals_(),
     goals_requested_(false),
     planner_rate_hz_(0.0),
@@ -176,7 +176,7 @@ void ExplorationThread::update_poses(const nav_msgs::PathConstPtr& robot_poses)
     got_first_pose_update_ = true;
 }
 
-bool ExplorationThread::compute_goal(std::size_t ridx, const GoalPoseCallback& callback)
+bool ExplorationThread::compute_goal(std::size_t ridx, const ResultCallback& callback)
 {
     std::unique_lock<std::mutex> lock(data_mutex_);
 
@@ -212,11 +212,11 @@ bool ExplorationThread::compute_goal(std::size_t ridx, const GoalPoseCallback& c
     goals_requested_ = true;
 
     // register goal callback for when goal computing is done
-    goal_pose_callback_ = callback;
+    result_callback_ = callback;
     return true;
 }
 
-bool ExplorationThread::compute_all_goals(const GoalPosesCallback& callback)
+bool ExplorationThread::compute_all_goals(const ResultCallback& callback)
 {
     if (!this->ready_to_plan()) {
         ROS_INFO("Exploration Thread is not ready to plan");
@@ -247,7 +247,7 @@ bool ExplorationThread::compute_all_goals(const GoalPosesCallback& callback)
     goals_requested_ = true;
 
     // register goal callback for when goal computing is done
-    goal_poses_callback_ = callback;
+    result_callback_ = callback;
     return true;
 }
 
@@ -444,20 +444,37 @@ void ExplorationThread::plannerthread()
             finish = std::chrono::high_resolution_clock::now();
             ROS_INFO("Computing goals took %0.3f seconds", std::chrono::duration<double>(finish - start).count());
 
+            if (goals.empty()) {
+                ROS_ERROR("Failed to compute new exploration goals");
+            }
+
             // log goal poses
             for (size_t ridx = 0; ridx < goals.size(); ridx++) {
                 ROS_DEBUG("goals r%li: %s", ridx, to_string(goals[ridx]).c_str());
             }
 
-            // call goal callback
+            // convert goals to nav_msgs::Path
             this->goal_locations_to_path_msg(goals, last_goals_);
-            if (goal_ridx_ == params_.robots.size()) {
-                goal_poses_callback_(last_goals_); // return goals for all robots
+
+            // prepare the result message
+            Result result;
+            if (goals.empty()) {
+                ROS_ERROR("Failed to compute new exploration goals");
+                result.success = false;
             }
             else {
-                geometry_msgs::PoseStamped goal_pose = last_goals_.poses[goal_ridx_];
-                goal_pose_callback_(goal_pose); // return goal for selected robot
+                result.success = true;
+                result.goals = last_goals_;
+                if (goal_ridx_ < params_.robots.size()) { 
+                    // truncate goals result to the requested goal
+                    if (goal_ridx_ != 0) {
+                        std::swap(result.goals.poses[0], result.goals.poses[goal_ridx_]);
+                    }
+                    result.goals.poses.resize(1); // only return goal for
+                }
             }
+
+            result_callback_(result);
 
             goals_requested_ = false; // signals no longer handling request
         }

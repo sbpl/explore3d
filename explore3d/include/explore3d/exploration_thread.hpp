@@ -33,8 +33,13 @@ class ExplorationThread
 {
 public:
 
-    typedef std::function<void(nav_msgs::Path& goal_poses)> GoalPosesCallback;
-    typedef std::function<void(geometry_msgs::PoseStamped& goal_pose)> GoalPoseCallback;
+    struct Result
+    {
+        bool success;
+        nav_msgs::Path goals;
+    };
+
+    typedef std::function<void(Result& res)> ResultCallback;
 
     ExplorationThread();
     ~ExplorationThread();
@@ -58,7 +63,7 @@ public:
     /// @return true if the Exploration Planner is ready to run (as given by
     ///     this->ready_to_plan()) and is not busy computing another goal (as
     ///     given by this->busy()); false otherwise
-    bool compute_goal(std::size_t ridx, const GoalPoseCallback& callback);
+    bool compute_goal(std::size_t ridx, const ResultCallback& callback);
 
     /// @brief Asynchronously compute new goals for all robots given the current map and robot poses.
     /// @brief callback Callback to be called by the Exploration Thread when
@@ -66,7 +71,7 @@ public:
     /// @return true if the planner is to plan (as given by
     ///     this->ready_to_plan()) and is not busy computing another goal (as
     ///     given by this->busy()); false otherwise
-    bool compute_all_goals(const GoalPosesCallback& callback);
+    bool compute_all_goals(const ResultCallback& callback);
 
     /// @brief Publishes planner maps for debugging; blocking if exploration planner is currently planning.
     void publish_maps();
@@ -95,8 +100,7 @@ private:
     std::mutex data_mutex_;
     std::vector<Locations_c> plannerthread_curr_locations_;
     std::vector<MapElement_c> plannerthread_map_points_;
-    GoalPosesCallback goal_poses_callback_;
-    GoalPoseCallback goal_pose_callback_;
+    ResultCallback result_callback_;
     nav_msgs::Path last_goals_;
     bool goals_requested_;
     std::size_t goal_ridx_; // the index of the robot whose goal we are computing, params_.robots.size() => all robots
