@@ -58,8 +58,11 @@ public:
     std::vector<std::vector<std::vector<pts2d> > > VisibilityRings_;    // [robot][z][points]
 
     void Init(ExpParams_c initparams);
+    
     void UpdateMap(CoverageMap_c new_map);
     void PartialUpdateMap(std::vector<MapElement_c> pts);
+
+    Locations_c NewGoal(std::size_t ridx, std::vector<Locations_c>& RobotLocations);
     std::vector<Locations_c> NewGoals(std::vector<Locations_c> RobotLocations);
 
 protected:

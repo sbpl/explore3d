@@ -176,27 +176,79 @@ void ExplorationThread::update_poses(const nav_msgs::PathConstPtr& robot_poses)
     got_first_pose_update_ = true;
 }
 
-bool ExplorationThread::compute_goals(const GoalPosesCallback& goal_poses_callback)
+bool ExplorationThread::compute_goal(std::size_t ridx, const GoalPoseCallback& callback)
 {
     std::unique_lock<std::mutex> lock(data_mutex_);
-    if (this->ready_to_plan()) {
-        ROS_INFO("Request to compute goals received");
-        plannerthread_curr_locations_ = curr_locations_;
-        plannerthread_map_points_.clear();
-        plannerthread_map_points_.reserve(curr_map_points_.size());
-        for (const auto& entry : curr_map_points_) {
-            MapElement_c e = entry.first;
-            e.data = entry.second;
-            plannerthread_map_points_.push_back(e);
-        }
-        goals_requested_ = true;
-        goal_poses_callback_ = goal_poses_callback;
-        return true;
-    }
-    else {
-        ROS_INFO("planner_thread: waiting for first map and pose update");
+
+    if (ridx >= params_.robots.size()) {
+        ROS_ERROR("Invalid robot index given to ExplorationThread::compute_goal");
         return false;
     }
+
+    if (!this->ready_to_plan()) {
+        ROS_INFO("Exploration Thread is not ready to plan");
+        return false;
+    }
+
+    if (this->busy()) {
+        ROS_INFO("Exploration Thread is busy working on another goal");
+        return false;
+    }
+
+    // under above lock, save state of robot poses and map
+    ROS_INFO("Request to compute goals received");
+    plannerthread_curr_locations_ = curr_locations_;
+    plannerthread_map_points_.clear();
+    plannerthread_map_points_.reserve(curr_map_points_.size());
+    for (const auto& entry : curr_map_points_) {
+        MapElement_c e = entry.first;
+        e.data = entry.second;
+        plannerthread_map_points_.push_back(e);
+    }
+
+    goal_ridx_ = ridx;
+
+    // marks thread as busy
+    goals_requested_ = true;
+
+    // register goal callback for when goal computing is done
+    goal_pose_callback_ = callback;
+    return true;
+}
+
+bool ExplorationThread::compute_all_goals(const GoalPosesCallback& callback)
+{
+    if (!this->ready_to_plan()) {
+        ROS_INFO("Exploration Thread is not ready to plan");
+        return false;
+    }
+
+    if (this->busy()) {
+        ROS_INFO("Exploration Thread is busy working on another goal");
+        return false;
+    }
+
+    std::unique_lock<std::mutex> lock(data_mutex_);
+
+    // under above lock, save state of robot poses and map
+    ROS_INFO("Request to compute goals received");
+    plannerthread_curr_locations_ = curr_locations_;
+    plannerthread_map_points_.clear();
+    plannerthread_map_points_.reserve(curr_map_points_.size());
+    for (const auto& entry : curr_map_points_) {
+        MapElement_c e = entry.first;
+        e.data = entry.second;
+        plannerthread_map_points_.push_back(e);
+    }
+
+    goal_ridx_ = params_.robots.size(); // signals to compute goals for all robots
+
+    // marks thread as busy
+    goals_requested_ = true;
+
+    // register goal callback for when goal computing is done
+    goal_poses_callback_ = callback;
+    return true;
 }
 
 void ExplorationThread::publish_maps()
@@ -367,32 +419,47 @@ void ExplorationThread::plannerthread()
     while (ros::ok()) {
         data_mutex_.lock();
         if (goals_requested_) {
+            assert(this->ready_to_plan() && !this->busy());
+
             ROS_INFO("Processing goals request");
-            assert(this->ready_to_plan());
-            std::chrono::time_point<std::chrono::high_resolution_clock> start, finish;
+
+            // update exploration planner state
             ROS_DEBUG("Updating exploration planner map...");
+            std::chrono::time_point<std::chrono::high_resolution_clock> start, finish;
             start = std::chrono::high_resolution_clock::now();
             EP_.PartialUpdateMap(plannerthread_map_points_);
             finish = std::chrono::high_resolution_clock::now();
             ROS_DEBUG("Updating exploration planner map took %0.3f seconds", std::chrono::duration<double>(finish - start).count());
 
+            // log start poses
+            for (size_t ridx = 0; ridx < plannerthread_curr_locations_.size(); ridx++) {
+                ROS_DEBUG("poses r%li: %s", ridx, to_string(plannerthread_curr_locations_[ridx]).c_str());
+            }
+
+            // compute goals
+            // TODO: implement ExplorationPlanner::NewGoal to compute goal only for the requested robot
             ROS_INFO("Computing goals...");
             start = std::chrono::high_resolution_clock::now();
-            for (size_t ridx = 0; ridx < plannerthread_curr_locations_.size(); ridx++) {
-                ROS_INFO("poses r%li: %s", ridx, to_string(plannerthread_curr_locations_[ridx]).c_str());
-            }
-
             std::vector<Locations_c> goals = EP_.NewGoals(plannerthread_curr_locations_);
-
-            for (size_t ridx = 0; ridx < goals.size(); ridx++) {
-                ROS_INFO("goals r%li: %s", ridx, to_string(goals[ridx]).c_str());
-            }
             finish = std::chrono::high_resolution_clock::now();
             ROS_INFO("Computing goals took %0.3f seconds", std::chrono::duration<double>(finish - start).count());
 
+            // log goal poses
+            for (size_t ridx = 0; ridx < goals.size(); ridx++) {
+                ROS_DEBUG("goals r%li: %s", ridx, to_string(goals[ridx]).c_str());
+            }
+
+            // call goal callback
             this->goal_locations_to_path_msg(goals, last_goals_);
-            goals_requested_ = false;
-            goal_poses_callback_(last_goals_);
+            if (goal_ridx_ == params_.robots.size()) {
+                goal_poses_callback_(last_goals_); // return goals for all robots
+            }
+            else {
+                geometry_msgs::PoseStamped goal_pose = last_goals_.poses[goal_ridx_];
+                goal_pose_callback_(goal_pose); // return goal for selected robot
+            }
+
+            goals_requested_ = false; // signals no longer handling request
         }
         data_mutex_.unlock();
 
@@ -403,6 +470,11 @@ void ExplorationThread::plannerthread()
 bool ExplorationThread::ready_to_plan() const
 {
     return got_first_map_update_ && got_first_pose_update_;
+}
+
+bool ExplorationThread::busy() const
+{
+    return goals_requested_;
 }
 
 template<typename T>

@@ -23,11 +23,18 @@
 #include "exploration.hpp"
 #include "exploration_structs.hpp"
 
-// Assumptions:
-//   There is one main thread that is calling functions listed in the public API of this class.
+/// @class Class for asynchronously computing exploration goals for multiple robots
+///
+/// This class is not thread-safe and assumes that there is one calling thread
+/// for this class.
+///
+/// Only one asynchronous request can be handled at a time.
 class ExplorationThread
 {
 public:
+
+    typedef std::function<void(nav_msgs::Path& goal_poses)> GoalPosesCallback;
+    typedef std::function<void(geometry_msgs::PoseStamped& goal_pose)> GoalPoseCallback;
 
     ExplorationThread();
     ~ExplorationThread();
@@ -36,15 +43,30 @@ public:
     int run();
     void shutdown();
 
+    const ExpParams_c& params() const { return params_; }
+
     void update_map(const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& cloud);
     void update_poses(const nav_msgs::PathConstPtr& robot_poses);
 
     bool ready_to_plan() const;
+    bool busy() const;
 
-    /// @brief Asynchronously compute new goals given the current map and robot poses
-    /// @return Whether the planner is ready to run (currently, has received a map and poses)
-    typedef std::function<void(nav_msgs::Path& goal_poses)> GoalPosesCallback;
-    bool compute_goals(const GoalPosesCallback& goals_callback);
+    /// @brief Asynchronously compute a new goal for a particular robot given the current map and robot poses
+    /// @param ridx Index of the robot to compute a goal for in [0, this->params().robots.size())
+    /// @param callback Callback to be called by the Exploration Thread when the
+    ///     goal is finished being computed
+    /// @return true if the Exploration Planner is ready to run (as given by
+    ///     this->ready_to_plan()) and is not busy computing another goal (as
+    ///     given by this->busy()); false otherwise
+    bool compute_goal(std::size_t ridx, const GoalPoseCallback& callback);
+
+    /// @brief Asynchronously compute new goals for all robots given the current map and robot poses.
+    /// @brief callback Callback to be called by the Exploration Thread when
+    ///     the goals are finished being computed.
+    /// @return true if the planner is to plan (as given by
+    ///     this->ready_to_plan()) and is not busy computing another goal (as
+    ///     given by this->busy()); false otherwise
+    bool compute_all_goals(const GoalPosesCallback& callback);
 
     /// @brief Publishes planner maps for debugging; blocking if exploration planner is currently planning.
     void publish_maps();
@@ -74,8 +96,10 @@ private:
     std::vector<Locations_c> plannerthread_curr_locations_;
     std::vector<MapElement_c> plannerthread_map_points_;
     GoalPosesCallback goal_poses_callback_;
+    GoalPoseCallback goal_pose_callback_;
     nav_msgs::Path last_goals_;
     bool goals_requested_;
+    std::size_t goal_ridx_; // the index of the robot whose goal we are computing, params_.robots.size() => all robots
     /// @}
 
     double planner_rate_hz_;
