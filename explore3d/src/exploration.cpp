@@ -166,6 +166,8 @@ void ExplorationPlanner::printCounts(uint x0, uint y0, uint x1, uint y1, uint rn
 
 void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
 {
+    // TODO: check if the nominal start state is free before even running this function (which temporarily will take up
+    // resources in setting up search)
     Locations_c collision_free_start;
     if (!this->FindNearestCollisionFreeCell(start, robotnum, collision_free_start)) {
         // TODO: return result indicating search unsuccessful termination
@@ -173,8 +175,9 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
         return;
     }
 
-    ROS_WARN("Robot pose is %s", to_string(start).c_str());
-    ROS_WARN("Collision free start is %s", to_string(collision_free_start).c_str());
+    if (collision_free_start != start) {
+        ROS_WARN("Exploration Planner cell cost expansion start state invalid: %s. Found nearby valid state: %s", to_string(start).c_str(), to_string(collision_free_start).c_str());
+    }
 
     // Preallocate search state table
     au::Grid<2, SearchPtState> states(coverage_.x_size_, coverage_.y_size_);
@@ -183,6 +186,7 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
             states(x, y).set_x(x);
             states(x, y).set_y(y);
             states(x, y).set_z(start.z);
+            states(x, y).set_theta(start.theta);
             states(x, y).set_cost(MaxCost);
             states(x, y).set_closed(false);
         }
@@ -273,6 +277,7 @@ bool ExplorationPlanner::FindNearestCollisionFreeCell(const Locations_c& start, 
             states(x, y).set_x(x);
             states(x, y).set_y(y);
             states(x, y).set_z(start.z);
+            states(x, y).set_theta(start.theta);
             states(x, y).set_cost(MaxCost);
             states(x, y).set_closed(false);
         }
@@ -308,7 +313,6 @@ bool ExplorationPlanner::FindNearestCollisionFreeCell(const Locations_c& start, 
             collision_free_start.y = curr->y();
             collision_free_start.z = curr->z();
             collision_free_start.theta = curr->theta();
-            ROS_ERROR("start-in-collision search found a goal with cost %0.3f", curr->cost());
             break;
         }
 
