@@ -29,7 +29,6 @@
 
 #include <cassert>
 #include <ros/console.h>
-#include <sbpl/headers.h>
 #include <explore3d/Grid.h>
 
 void ExplorationPlanner::Init(ExpParams_c initparams)
@@ -167,65 +166,15 @@ void ExplorationPlanner::printCounts(uint x0, uint y0, uint x1, uint y1, uint rn
 
 void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
 {
-    struct SearchPtState : public AbstractSearchState
-    {
-    public:
+    Locations_c collision_free_start;
+    if (!this->FindNearestCollisionFreeCell(start, robotnum, collision_free_start)) {
+        // TODO: return result indicating search unsuccessful termination
+        ROS_ERROR("Failed to compute collision free start state");
+        return;
+    }
 
-        SearchPtState() : AbstractSearchState(), search_pt_(), closed_(false)
-        { heapindex = 0; search_pt_.theta = 0; search_pt_.cost = MaxCost; }
-
-        int x() const { return search_pt_.x; }
-        int y() const { return search_pt_.y; }
-        int z() const { return search_pt_.z; }
-        int theta() const { return search_pt_.theta; }
-        CostType cost() const { return search_pt_.cost; }
-        bool closed() const { return closed_; }
-
-        void set_x(int x) { search_pt_.x = x; }
-        void set_y(int y) { search_pt_.y = y; }
-        void set_z(int z) { search_pt_.z = z; }
-        void set_theta(int theta) { search_pt_.theta = theta; }
-        void set_cost(CostType cost) { search_pt_.cost = cost; }
-        void set_closed(bool closed) { closed_ = closed; }
-
-        const SearchPts_c& search_pt() const { return search_pt_; }
-
-    private:
-
-        SearchPts_c search_pt_;
-        bool closed_;
-    };
-
-    auto CreateKey = [](double val) -> CKey
-    {
-        const int fpscale = 1000;
-        CKey key;
-        key.key[0] = fpscale * val;
-        return key;
-    };
-
-    // TODO: fixme to take in cost parameter in cells derived from meters
-    const double preferred_min_distance_cells = 3;
-
-    auto compute_motion_penalty = [&](const SearchPtState& s, const SearchPtState& t)
-    {
-        // Capture a bunch of hacky rules about traversal costs between states
-        const int dx = t.x() - start.x;
-        const int dy = t.y() - start.y;
-        double end_theta = atan2((double)dy, (double)dx);
-        double start_theta = DiscTheta2Cont(start.theta, NumAngles_);
-        double angle_diff = computeMinUnsignedAngleDiff(end_theta, start_theta);
-        double final_backwards_penalty = backwards_penalty_ * angle_diff / M_PI;
-
-        double distance = sqrt((double)(dx * dx + dy * dy));
-        const double arbitrary_short_distance_penalty = 1000.0;
-        double close_penalty = 1.0; // = distance < (double)preferred_min_distance_cells ? arbitrary_short_distance_penalty : 1.0;
-        if (distance < (double)preferred_min_distance_cells) {
-            close_penalty = arbitrary_short_distance_penalty;
-        }
-
-        return std::max({ close_penalty, final_backwards_penalty, 1.0 });
-    };
+    ROS_WARN("Robot pose is %s", to_string(start).c_str());
+    ROS_WARN("Collision free start is %s", to_string(collision_free_start).c_str());
 
     // Preallocate search state table
     au::Grid<2, SearchPtState> states(coverage_.x_size_, coverage_.y_size_);
@@ -239,10 +188,101 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
         }
     }
 
-    SearchPtState& start_state = states(start.x, start.y);
-    start_state.set_cost(0.0);
+    CHeap OPEN;
+
+    // insert collision-free start state into open list
+    SearchPtState& collision_free_start_state = states(collision_free_start.x, collision_free_start.y);
+    collision_free_start_state.set_cost(10.0); // don't know why this is 10 but that's what's been there forever
+    CKey collision_free_start_key = CreateKey(collision_free_start_state.cost());
+    OPEN.insertheap(&collision_free_start_state, collision_free_start_key);
+
+    while (!OPEN.emptyheap()) {
+        SearchPtState* curr = (SearchPtState*)OPEN.deleteminheap();
+        curr->set_closed(true);
+
+        for (size_t midx = 0; midx < mp_.size(); midx++) {
+            int succ_x = curr->x() + mp_[midx].x;
+            int succ_y = curr->y() + mp_[midx].y;
+            if (succ_x < 0 || succ_y < 0 || succ_x >= (int)states.size(0) || succ_y >= (int)states.size(1)) {
+                continue;
+            }
+            SearchPtState& succ = states(succ_x, succ_y);
+
+            const int robot_size = robots_[robotnum].CircularSize_;
+            bool is_valid = coverage_.OnInflatedMap(succ.x(), succ.y(), succ.z(), robotnum, robot_size);
+            bool is_freespace = is_valid && coverage_.Getval(succ.x(), succ.y(), succ.z()) == FREESPACE; // shouldn't this be redundant with the above check?
+            const bool valid = is_valid && is_freespace;
+
+            if (!valid) {
+                continue;
+            }
+
+            if (!succ.closed()) {
+                CostType succ_cost = succ.cost();
+                CostType new_cost = curr->cost() + this->ComputeMotionPenalty(start, *curr, succ) * mp_[midx].cost;
+                if (new_cost < succ_cost) {
+                    succ.set_cost(new_cost);
+                    CKey succkey = CreateKey(new_cost);
+                    if (OPEN.inheap(&succ)) {
+                        OPEN.updateheap(&succ, succkey);
+                    }
+                    else {
+                        OPEN.insertheap(&succ, succkey);
+                    }
+                }
+            }
+        }
+    }
+
+    // copy state costs-to-go into costmap
+    CostMap& costmap = CostToPts_[robotnum];
+    for (std::size_t x = 0; x < costmap.size(0); ++x) {
+        for (std::size_t y = 0; y < costmap.size(1); ++y) {
+            costmap(x, y) = states(x, y).cost();
+        }
+    }
+
+    // disallow sending goals right up your butt
+    const int neighbor = 8;
+    const CostType FUCKTON = MaxCost;
+    for (int x = -neighbor; x <= neighbor; ++x) {
+        for (int y = -neighbor; y <= neighbor; ++y) {
+            double dist = sqrt((double)(x * x + y * y));
+            if (dist > neighbor) {
+                continue;
+            }
+            int x_coord = start.x + x;
+            int y_coord = start.y + y;
+            if (x_coord < 0 || x_coord > (int)costmap.size(0) - 1 || y_coord < 0 || y_coord > (int)costmap.size(1) - 1)
+            {
+                continue;
+            }
+            else {
+                costmap(x_coord, y_coord) = FUCKTON;
+            }
+        }
+    }
+}
+
+bool ExplorationPlanner::FindNearestCollisionFreeCell(const Locations_c& start, int robotnum, Locations_c& out)
+{
+    // Preallocate search state table
+    au::Grid<2, SearchPtState> states(coverage_.x_size_, coverage_.y_size_);
+    for (std::size_t x = 0; x < states.size(0); ++x) {
+        for (std::size_t y = 0; y < states.size(1); ++y) {
+            states(x, y).set_x(x);
+            states(x, y).set_y(y);
+            states(x, y).set_z(start.z);
+            states(x, y).set_cost(MaxCost);
+            states(x, y).set_closed(false);
+        }
+    }
 
     CHeap OPEN;
+
+    // insert start state into open list
+    SearchPtState& start_state = states(start.x, start.y);
+    start_state.set_cost(0.0);
     CKey startkey = CreateKey(start_state.cost());
     OPEN.insertheap(&start_state, startkey);
 
@@ -280,20 +320,12 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
             }
             SearchPtState& succ = states(succ_x, succ_y);
 
-            // remove is_valid check for start-in-collision search
-//            const int robot_size = robots_[robotnum].CircularSize_;
-//            bool is_valid = coverage_.OnInflatedMap(succ.x(), succ.y(), succ.z(), robotnum, robot_size);
-//            bool is_freespace = is_valid && coverage_.Getval(succ.x(), succ.y(), succ.z()) == FREESPACE;
-//            const bool valid = is_valid && is_freespace;
-//
-//            if (!valid) {
-//                continue;
-//            }
+            // note: no is_valid check for start-in-collision search
 
             if (!succ.closed()) {
                 CostType succ_cost = succ.cost();
                 // note: remove arbitrary penalty
-                CostType new_cost = curr->cost() + /*compute_motion_penalty(*curr, succ) * */ mp_[midx].cost; 
+                CostType new_cost = curr->cost() + mp_[midx].cost; 
                 if (new_cost < succ_cost) {
                     succ.set_cost(new_cost);
                     CKey succkey = CreateKey(new_cost);
@@ -308,89 +340,13 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
         }
     }
 
-    assert(collision_free_start.x >= 0 && collision_free_start.y >= 0 && collision_free_start.z >= 0 && collision_free_start.theta >= 0);
-    // TODO: check for above search successful termination
-    ROS_WARN("Robot pose is %s", to_string(start).c_str());
-    ROS_WARN("Collision free start is %s", to_string(collision_free_start).c_str());
-
-    // reset states and open list
-    for (SearchPtState& state : states) {
-       state.set_cost(MaxCost);
-       state.set_closed(false);
+    if (collision_free_start.x >= 0) {
+        assert(collision_free_start.y >= 0 && collision_free_start.z >= 0 && collision_free_start.theta >= 0);
+        out = collision_free_start;
+        return true;
     }
-
-    OPEN.makeemptyheap();
-
-    SearchPtState& collision_free_start_state = states(collision_free_start.x, collision_free_start.y);
-    collision_free_start_state.set_cost(10.0); // don't know why this is 10 but that's what's been there forever
-    CKey collision_free_start_key = CreateKey(collision_free_start_state.cost());
-    OPEN.insertheap(&collision_free_start_state, collision_free_start_key);
-
-    while (!OPEN.emptyheap()) {
-        SearchPtState* curr = (SearchPtState*)OPEN.deleteminheap();
-        curr->set_closed(true);
-
-        for (size_t midx = 0; midx < mp_.size(); midx++) {
-            int succ_x = curr->x() + mp_[midx].x;
-            int succ_y = curr->y() + mp_[midx].y;
-            if (succ_x < 0 || succ_y < 0 || succ_x >= (int)states.size(0) || succ_y >= (int)states.size(1)) {
-                continue;
-            }
-            SearchPtState& succ = states(succ_x, succ_y);
-
-            const int robot_size = robots_[robotnum].CircularSize_;
-            bool is_valid = coverage_.OnInflatedMap(succ.x(), succ.y(), succ.z(), robotnum, robot_size);
-            bool is_freespace = is_valid && coverage_.Getval(succ.x(), succ.y(), succ.z()) == FREESPACE; // shouldn't this be redundant with the above check?
-            const bool valid = is_valid && is_freespace;
-
-            if (!valid) {
-                continue;
-            }
-
-            if (!succ.closed()) {
-                CostType succ_cost = succ.cost();
-                CostType new_cost = curr->cost() + compute_motion_penalty(*curr, succ) * mp_[midx].cost;
-                if (new_cost < succ_cost) {
-                    succ.set_cost(new_cost);
-                    CKey succkey = CreateKey(new_cost);
-                    if (OPEN.inheap(&succ)) {
-                        OPEN.updateheap(&succ, succkey);
-                    }
-                    else {
-                        OPEN.insertheap(&succ, succkey);
-                    }
-                }
-            }
-        }
-    }
-
-    // copy over costmap
-    CostMap& costmap = CostToPts_[robotnum];
-    for (std::size_t x = 0; x < costmap.size(0); ++x) {
-        for (std::size_t y = 0; y < costmap.size(1); ++y) {
-            costmap(x, y) = states(x, y).cost();
-        }
-    }
-
-    // disallow sending goals right up your butt
-    const int neighbor = 8;
-    const CostType FUCKTON = MaxCost;
-    for (int x = -neighbor; x <= neighbor; ++x) {
-        for (int y = -neighbor; y <= neighbor; ++y) {
-            double dist = sqrt((double)(x * x + y * y));
-            if (dist > neighbor) {
-                continue;
-            }
-            int x_coord = start.x + x;
-            int y_coord = start.y + y;
-            if (x_coord < 0 || x_coord > (int)costmap.size(0) - 1 || y_coord < 0 || y_coord > (int)costmap.size(1) - 1)
-            {
-                continue;
-            }
-            else {
-                costmap(x_coord, y_coord) = FUCKTON;
-            }
-        }
+    else {
+        return false;
     }
 }
 
@@ -484,4 +440,38 @@ void ExplorationPlanner::PartialUpdateMap(std::vector<MapElement_c> pts)
         coverage_.Setval(pts[pidx].x, pts[pidx].y, pts[pidx].z, pts[pidx].data);
     }
     coverage_.UpdateDistances();
+}
+
+CKey ExplorationPlanner::CreateKey(double val)
+{
+    const int fpscale = 1000;
+    CKey key;
+    key.key[0] = fpscale * val;
+    return key;
+}
+
+CostType ExplorationPlanner::ComputeMotionPenalty(
+    const Locations_c& start,
+    const SearchPtState& s,
+    const SearchPtState& t)
+{
+    // TODO: fixme to take in cost parameter in cells derived from meters
+    const double preferred_min_distance_cells = 3;
+
+    // Capture a bunch of hacky rules about traversal costs between states
+    const int dx = t.x() - start.x;
+    const int dy = t.y() - start.y;
+    double end_theta = atan2((double)dy, (double)dx);
+    double start_theta = DiscTheta2Cont(start.theta, NumAngles_);
+    double angle_diff = computeMinUnsignedAngleDiff(end_theta, start_theta);
+    double final_backwards_penalty = backwards_penalty_ * angle_diff / M_PI;
+
+    double distance = sqrt((double)(dx * dx + dy * dy));
+    const double arbitrary_short_distance_penalty = 1000.0;
+    double close_penalty = 1.0; // = distance < (double)preferred_min_distance_cells ? arbitrary_short_distance_penalty : 1.0;
+    if (distance < (double)preferred_min_distance_cells) {
+        close_penalty = arbitrary_short_distance_penalty;
+    }
+
+    return std::max({ close_penalty, final_backwards_penalty, 1.0 });
 }

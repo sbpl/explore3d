@@ -13,6 +13,8 @@
 #include <mutex>
 #include <thread>
 
+#include <sbpl/headers.h>
+
 #include <explore3d/Grid.h>
 #include <explore3d/coverage_map.hpp>
 #include <explore3d/exploration_structs.hpp>
@@ -73,8 +75,39 @@ private:
 
     friend class CoverageMap_c;
 
+    // Adapt SearchPts_c for use with CHeap
+    struct SearchPtState : public AbstractSearchState
+    {
+    public:
+
+        SearchPtState() : AbstractSearchState(), search_pt_(), closed_(false)
+        { heapindex = 0; search_pt_.theta = 0; search_pt_.cost = MaxCost; }
+
+        int x() const { return search_pt_.x; }
+        int y() const { return search_pt_.y; }
+        int z() const { return search_pt_.z; }
+        int theta() const { return search_pt_.theta; }
+        CostType cost() const { return search_pt_.cost; }
+        bool closed() const { return closed_; }
+
+        void set_x(int x) { search_pt_.x = x; }
+        void set_y(int y) { search_pt_.y = y; }
+        void set_z(int z) { search_pt_.z = z; }
+        void set_theta(int theta) { search_pt_.theta = theta; }
+        void set_cost(CostType cost) { search_pt_.cost = cost; }
+        void set_closed(bool closed) { closed_ = closed; }
+
+        const SearchPts_c& search_pt() const { return search_pt_; }
+
+    private:
+
+        SearchPts_c search_pt_;
+        bool closed_;
+    };
+
     void PrecalcVisibilityCircles(void);
     void Dijkstra(const Locations_c& start, int robotnum);
+    bool FindNearestCollisionFreeCell(const Locations_c& start, int robotnum, Locations_c& out);
     void CreateFrontier(void);
     void GenMotionSteps(void);
     void GenVisibilityRing(void);
@@ -85,6 +118,10 @@ private:
     void printCosts(uint x0, uint y0, uint x1, uint y1, uint rn);
     void printCounts(uint x0, uint y0, uint x1, uint y1, uint rn);
     CostType EvalFxn(uint x, uint y, uint z, uint a, uint rn);
+
+    // convert a floating-point cost value to a fixed point value for use with CHeap
+    CKey CreateKey(double val);
+    CostType ComputeMotionPenalty(const Locations_c& start, const SearchPtState& s, const SearchPtState& t);
 };
 
 #endif
