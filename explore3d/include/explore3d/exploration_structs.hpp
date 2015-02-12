@@ -18,6 +18,8 @@ bool operator>(const SearchPts_c & pt1, const SearchPts_c & pt2);
 bool EqualLocation(const SearchPts_c & pt1, const SearchPts_c & pt2);
 bool ptscompare(const  pts2d & pt1, const  pts2d & pt2);
 bool ptssort(const pts2d & pt1, const pts2d & pt2);
+bool operator==(const Locations_c& s, const Locations_c& t);
+bool operator!=(const Locations_c& s, const Locations_c& t);
 
 class MapElement_c
 {

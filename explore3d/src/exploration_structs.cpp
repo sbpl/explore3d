@@ -1,12 +1,27 @@
 #include <explore3d/exploration_structs.hpp>
 
 #include <sstream>
+#include <tuple>
 
-bool operator< (const SearchPts_c & pt1, const SearchPts_c & pt2)
-{ return pt1.cost < pt2.cost; }
+bool operator<(const SearchPts_c& pt1, const SearchPts_c& pt2)
+{
+    return pt1.cost < pt2.cost;
+}
 
-bool operator> (const SearchPts_c & pt1, const SearchPts_c & pt2)
-{ return pt1.cost > pt2.cost; }
+bool operator>(const SearchPts_c & pt1, const SearchPts_c & pt2)
+{
+    return pt1.cost > pt2.cost;
+}
+
+bool operator==(const Locations_c& s, const  Locations_c& t)
+{
+    return std::tie(s.x, s.y, s.z, s.theta) == std::tie(t.x, t.y, t.z, t.theta);
+}
+
+bool operator!=(const Locations_c& s, const Locations_c& t)
+{
+    return !operator==(s, t);
+}
 
 bool EqualLocation (const SearchPts_c & pt1, const SearchPts_c & pt2)
 { return (pt1.x==pt2.x && pt1.y==pt2.y && pt1.z==pt2.z); }
