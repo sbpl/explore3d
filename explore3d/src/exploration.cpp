@@ -90,7 +90,7 @@ void ExplorationPlanner::GenVisibilityRing(void)
             if (radius < 2) {
                 radius = 2;
             }
-            printf("robot %i height=%f radius = %f\n", (int)ridx, height, radius);
+//            printf("robot %i height=%f radius = %f\n", (int)ridx, height, radius);
             if (radius < robots_[ridx].DetectionRange_) {
                 pts2d temp_pt;
                 for (double aidx = 0; aidx < 2 * M_PI; aidx += 0.01) {
@@ -108,7 +108,7 @@ void ExplorationPlanner::GenVisibilityRing(void)
                 it = std::unique(VisibilityRings_[ridx][zidx].begin(), VisibilityRings_[ridx][zidx].end(), ptscompare);
                 VisibilityRings_[ridx][zidx].resize(std::distance(VisibilityRings_[ridx][zidx].begin(), it));
                 for (const auto& ring : VisibilityRings_[ridx][zidx]) {
-                    printf("r%i z%i x%i y%i a%i\n", (int)ridx, (int)zidx, ring.x, ring.y, ring.theta);
+//                    printf("r%i z%i x%i y%i a%i\n", (int)ridx, (int)zidx, ring.x, ring.y, ring.theta);
                 }
             }
         }
@@ -253,7 +253,7 @@ void ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
         for (size_t midx = 0; midx < mp_.size(); midx++) {
             int succ_x = curr->x() + mp_[midx].x;
             int succ_y = curr->y() + mp_[midx].y;
-            if (succ_x < 0 || succ_y < 0 || succ_x >= states.size(0) || succ_y >= states.size(1)) {
+            if (succ_x < 0 || succ_y < 0 || succ_x >= (int)states.size(0) || succ_y >= (int)states.size(1)) {
                 continue;
             }
             SearchPtState& succ = states(succ_x, succ_y);
