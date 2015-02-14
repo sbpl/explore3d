@@ -25,7 +25,6 @@ rosbuild_add_library(
     src/coverage_map.cpp
     src/exploration_planner.cpp
     src/exploration_thread.cpp
-    src/exploration_structs.cpp
-    src/raycast.cpp)
+    src/exploration_structs.cpp)
 
 target_link_libraries(${PROJECT_NAME} ${SBPL_LIBRARIES})
