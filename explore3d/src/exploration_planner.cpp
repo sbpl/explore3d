@@ -1,6 +1,6 @@
 /// 3-D Exploration Library
 /// (c) 2014 Jonathan Michael Butzke
-#include <explore3d/exploration.hpp>
+#include <explore3d/exploration_planner.hpp>
 
 /* inputs:
  * h *eight of hexa flight

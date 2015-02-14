@@ -23,7 +23,7 @@ link_directories(${SBPL_LIBRARY_DIRS})
 rosbuild_add_library(
     explore3d
     src/coverage_map.cpp
-    src/exploration.cpp
+    src/exploration_planner.cpp
     src/exploration_thread.cpp
     src/exploration_structs.cpp
     src/raycast.cpp)

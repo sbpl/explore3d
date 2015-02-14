@@ -20,7 +20,7 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <tf/transform_listener.h>
 
-#include "exploration.hpp"
+#include "exploration_planner.hpp"
 #include "exploration_structs.hpp"
 
 /// @class Class for asynchronously computing exploration goals for multiple robots
