@@ -112,7 +112,6 @@ private:
     void GenMotionSteps(void);
     void GenVisibilityRing(void);
     void ClearCounts(void);
-    void raycast3d(SearchPts_c start, int robotnum);
     bool bresenham_line_3D(int x1, int y1, int z1, int x2, int y2, int z2);
     void printMap(int height);
     void printCosts(uint x0, uint y0, uint x1, uint y1, uint rn);
@@ -122,6 +121,9 @@ private:
     // convert a floating-point cost value to a fixed point value for use with CHeap
     CKey CreateKey(double val);
     CostType ComputeMotionPenalty(const Locations_c& start, const SearchPtState& s, const SearchPtState& t);
+
+    void raycast3d(const SearchPts_c& start, int robotnum);
+    void raycast3d_hexa(const SearchPts_c& start, int hexanum);
 };
 
 #endif

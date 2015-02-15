@@ -33,6 +33,8 @@
 // go to closest
 
 #include <cassert>
+#include <algorithm>
+
 #include <ros/console.h>
 #include <explore3d/Grid.h>
 
@@ -111,9 +113,9 @@ void ExplorationPlanner::GenVisibilityRing(void)
                 std::vector<pts2d>::iterator it;
                 it = std::unique(VisibilityRings_[ridx][zidx].begin(), VisibilityRings_[ridx][zidx].end(), ptscompare);
                 VisibilityRings_[ridx][zidx].resize(std::distance(VisibilityRings_[ridx][zidx].begin(), it));
-                for (const auto& ring : VisibilityRings_[ridx][zidx]) {
+//                for (const auto& ring : VisibilityRings_[ridx][zidx]) {
 //                    printf("r%i z%i x%i y%i a%i\n", (int)ridx, (int)zidx, ring.x, ring.y, ring.theta);
-                }
+//                }
             }
         }
     }
@@ -401,10 +403,38 @@ void ExplorationPlanner::CreateFrontier(void)
     Frontier3d_ = coverage_.GetFrontier3d();
     ClearCounts();
 
+    const std::size_t HEXA_IDX = 1; 
+    // TODO: various hacks to enforce different behavior for the hexacopter...factor out per-robot cost functions or
+    // something instead of making it the default behavior for robot 2 -_-
+
     for (size_t ridx = 0; ridx < robots_.size(); ridx++) {
         // for each frontier cell, determine viewing cells by raycasting outwards to intersect robot sensor planes
         for (size_t pidx = 0; pidx < Frontier3d_.size(); pidx++) {
-            raycast3d(Frontier3d_[pidx], ridx);
+            if (ridx == HEXA_IDX) {
+                raycast3d_hexa(Frontier3d_[pidx], ridx);
+            }
+            else {
+                raycast3d(Frontier3d_[pidx], ridx);
+            }
+        }
+
+        if (ridx == HEXA_IDX) {
+            // check if there are no cells that can be seen exclusively by the hexacopter...
+            bool no_counts = true;
+            for (auto git = counts_[HEXA_IDX].begin(); git != counts_[HEXA_IDX].end(); ++git) {
+                if (*git != 0.0) {
+                    no_counts = false;
+                    break;
+                }
+            }
+
+            if (no_counts) {
+                ROS_WARN("No cells only visible by hexacopter...reverting to normal cost function");
+                // apply the normal cost function
+                for (size_t pidx = 0; pidx < Frontier3d_.size(); pidx++) {
+                    raycast3d(Frontier3d_[pidx], ridx);
+                }
+            }
         }
 
         goal_[ridx].cost = 0;
@@ -584,9 +614,12 @@ bool ExplorationPlanner::bresenham_line_3D(int x1, int y1, int z1, int x2, int y
     return true;
 }
 
-void ExplorationPlanner::raycast3d(SearchPts_c start, int robotnum)
+void ExplorationPlanner::raycast3d(const SearchPts_c& start, int robotnum)
 {
     // TODO: multi-thread the casting to different points
+
+    // place the visibility ring around the frontier point and attempt to raycast to it
+    auto& count_map = counts_[robotnum];
     for (size_t pidx = 0; pidx < VisibilityRings_[robotnum][start.z].size(); pidx++) {
         int x, y, z;
         x = VisibilityRings_[robotnum][start.z][pidx].x + start.x;
@@ -595,7 +628,37 @@ void ExplorationPlanner::raycast3d(SearchPts_c start, int robotnum)
         if (coverage_.Getval(x, y, z) == FREESPACE) {
             bool result = bresenham_line_3D(start.x, start.y, start.z, x, y, z);
             if (result) {
-                counts_[robotnum](x, y, VisibilityRings_[robotnum][start.z][pidx].theta) += 1.0;
+                count_map(x, y, VisibilityRings_[robotnum][start.z][pidx].theta) += 1.0;
+            }
+        }
+    }
+}
+
+void ExplorationPlanner::raycast3d_hexa(const SearchPts_c& start, int hexanum)
+{
+    const int HEXA_IDX = 1;
+
+    // for every robot
+    for (int ridx = 0; ridx < (int)robots_.size(); ++ridx) {
+        // other than the hexa
+        if (ridx != HEXA_IDX) {
+            if (coverage_.GetMotionLevelValue(ridx, start.x, start.y) != OBS) {
+                // skip if there is not on obstacle on this robot's coverage map at this (x, y) coord
+                return;
+            }
+        }
+    }
+
+    auto& count_map = counts_[hexanum];
+    for (size_t pidx = 0; pidx < VisibilityRings_[hexanum][start.z].size(); pidx++) {
+        int x, y, z;
+        x = VisibilityRings_[hexanum][start.z][pidx].x + start.x;
+        y = VisibilityRings_[hexanum][start.z][pidx].y + start.y;
+        z = robots_[hexanum].SensorHeight_;
+        if (coverage_.Getval(x, y, z) == FREESPACE) {
+            bool result = bresenham_line_3D(start.x, start.y, start.z, x, y, z);
+            if (result) {
+                count_map(x, y, VisibilityRings_[hexanum][start.z][pidx].theta) += 1.0;
             }
         }
     }
