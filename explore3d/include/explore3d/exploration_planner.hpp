@@ -34,6 +34,11 @@ public:
     /// @{
     double backwards_penalty;
     /// @}
+
+    int room_min_x;
+    int room_min_y;
+    int room_max_x;
+    int room_max_y;
 };
 
 class ExplorationPlanner
@@ -50,6 +55,10 @@ public:
     unsigned char FREESPACE, OBS, UNK;
     uint MinDist_;
     double backwards_penalty_;
+    int room_min_x_;
+    int room_min_y_;
+    int room_max_x_;
+    int room_max_y_;
 
     std::vector<SearchPts_c> mp_;                                       //motion primitives
     std::vector<CostMap> CostToPts_;                                    //[robot](x, y)
@@ -124,6 +133,8 @@ private:
 
     void raycast3d(const SearchPts_c& start, int robotnum);
     void raycast3d_hexa(const SearchPts_c& start, int hexanum);
+
+    bool inside_room(int x, int y) const;
 };
 
 #endif

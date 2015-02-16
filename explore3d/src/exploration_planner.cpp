@@ -52,6 +52,11 @@ void ExplorationPlanner::Init(ExpParams_c initparams)
 
     backwards_penalty_ = initparams.backwards_penalty;
 
+    room_min_x_ = initparams.room_min_x;
+    room_min_y_ = initparams.room_min_y;
+    room_max_x_ = initparams.room_max_x;
+    room_max_y_ = initparams.room_max_y;
+
     CostToPts_.resize(robots_.size());
     counts_.resize(robots_.size());
     scores_.resize(robots_.size());
@@ -244,17 +249,24 @@ bool ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
         }
     }
 
+    // The value we assign when we really don't want the segbot to go there
+    const CostType FUCKTON = MaxCost;
+
     // copy state costs-to-go into costmap
     CostMap& costmap = CostToPts_[robotnum];
     for (std::size_t x = 0; x < costmap.size(0); ++x) {
         for (std::size_t y = 0; y < costmap.size(1); ++y) {
-            costmap(x, y) = states(x, y).cost();
+            if (this->inside_room(x, y)) {
+                costmap(x, y) = states(x, y).cost();
+            }
+            else {
+                costmap(x, y) = FUCKTON;
+            }
         }
     }
 
     // disallow sending goals right up your butt
     const int neighbor = 8;
-    const CostType FUCKTON = MaxCost;
     for (int x = -neighbor; x <= neighbor; ++x) {
         for (int y = -neighbor; y <= neighbor; ++y) {
             double dist = sqrt((double)(x * x + y * y));
@@ -272,6 +284,8 @@ bool ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
             }
         }
     }
+
+
 
     return true;
 }
@@ -616,6 +630,9 @@ bool ExplorationPlanner::bresenham_line_3D(int x1, int y1, int z1, int x2, int y
 
 void ExplorationPlanner::raycast3d(const SearchPts_c& start, int robotnum)
 {
+    if (!this->inside_room(start.x, start.y)) {
+        return;
+    }
     // TODO: multi-thread the casting to different points
 
     // place the visibility ring around the frontier point and attempt to raycast to it
@@ -628,7 +645,12 @@ void ExplorationPlanner::raycast3d(const SearchPts_c& start, int robotnum)
         if (coverage_.Getval(x, y, z) == FREESPACE) {
             bool result = bresenham_line_3D(start.x, start.y, start.z, x, y, z);
             if (result) {
-                count_map(x, y, VisibilityRings_[robotnum][start.z][pidx].theta) += 1.0;
+                if (start.z <= z) { // HAX!: double-count cells at or beneath the sensor height
+                    count_map(x, y, VisibilityRings_[robotnum][start.z][pidx].theta) += 2.0;
+                }
+                else {
+                    count_map(x, y, VisibilityRings_[robotnum][start.z][pidx].theta) += 1.0;
+                }
             }
         }
     }
@@ -636,6 +658,10 @@ void ExplorationPlanner::raycast3d(const SearchPts_c& start, int robotnum)
 
 void ExplorationPlanner::raycast3d_hexa(const SearchPts_c& start, int hexanum)
 {
+    if (!this->inside_room(start.x, start.y)) {
+        return;
+    }
+
     const int HEXA_IDX = 1;
 
     // for every robot
@@ -663,3 +689,13 @@ void ExplorationPlanner::raycast3d_hexa(const SearchPts_c& start, int hexanum)
         }
     }
 }
+
+bool ExplorationPlanner::inside_room(int x, int y) const
+{
+    if (room_min_x_ < 0 || room_min_y_ < 0 || room_max_x_ > (int)coverage_.x_size_ - 1 || room_max_y_ > (int)coverage_.y_size_ - 1) {
+        ROS_WARN("Invalid room boundaries => No room");
+        return true;
+    }
+    return x >= room_min_x_ && x <= room_max_x_ && y >= room_min_y_ && y <= room_max_y_;
+}
+

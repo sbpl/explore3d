@@ -372,6 +372,8 @@ bool ExplorationThread::read_robot_params()
 
 bool ExplorationThread::read_cost_params()
 {
+    // assumes read_map_params should have been read by now
+
     const double scale = 20.0;
     int objectmaxelev, obs, freespace, unk, mindist;
     double backwards_penalty;
@@ -382,12 +384,30 @@ bool ExplorationThread::read_cost_params()
     ph_.param<int>("mindist", mindist, (uint) 1.2 * scale); // closest robots should operate without penalty (cells)
     ph_.param<double>("backwards_penalty", backwards_penalty, 1.0);
 
+    // by default the starting line is outside the map
+    double room_min_x;
+    double room_min_y;
+    double room_max_x;
+    double room_max_y;
+    ph_.param<double>("room_min_x", room_min_x, origin_x_ - 2 * resolution_);
+    ph_.param<double>("room_min_y", room_min_y, origin_y_ - 2 * resolution_);
+    ph_.param<double>("room_max_x", room_max_x, origin_x_ - 2 * resolution_);
+    ph_.param<double>("room_max_y", room_max_y, origin_y_ - 2 * resolution_);
+
     params_.ObjectMaxElev = objectmaxelev;
     params_.obs = obs;
     params_.freespace = freespace;
     params_.unk = unk;
     params_.MinDist = mindist;
     params_.backwards_penalty = backwards_penalty;
+    params_.room_min_x = continuous_to_discrete(room_min_x - origin_x_, resolution_);
+    params_.room_min_y = continuous_to_discrete(room_min_y - origin_y_, resolution_);
+    params_.room_max_x = continuous_to_discrete(room_max_x - origin_x_, resolution_);
+    params_.room_max_y = continuous_to_discrete(room_max_y - origin_y_, resolution_);
+
+    ROS_INFO("Room: [%d, %d] x [%d,  %d]",
+            params_.room_min_x, params_.room_min_y, params_.room_max_x, params_.room_max_y);
+
     return true;
 }
 
