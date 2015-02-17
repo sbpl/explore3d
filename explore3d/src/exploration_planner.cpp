@@ -638,18 +638,21 @@ void ExplorationPlanner::raycast3d(const SearchPts_c& start, int robotnum)
     // place the visibility ring around the frontier point and attempt to raycast to it
     auto& count_map = counts_[robotnum];
     for (size_t pidx = 0; pidx < VisibilityRings_[robotnum][start.z].size(); pidx++) {
-        int x, y, z;
+        int x, y, z, theta;
         x = VisibilityRings_[robotnum][start.z][pidx].x + start.x;
         y = VisibilityRings_[robotnum][start.z][pidx].y + start.y;
         z = robots_[robotnum].SensorHeight_;
+        // note: leaving this here to serve as a reminder of the worst bug of the UTACC Project
+        // theta = (VisibilityRings_[robotnum][start.z][pidx].theta) % NumAngles_;
+        theta = (VisibilityRings_[robotnum][start.z][pidx].theta + (NumAngles_ >> 1)) % NumAngles_;
         if (coverage_.Getval(x, y, z) == FREESPACE) {
             bool result = bresenham_line_3D(start.x, start.y, start.z, x, y, z);
             if (result) {
                 if (start.z <= z) { // HAX!: double-count cells at or beneath the sensor height
-                    count_map(x, y, VisibilityRings_[robotnum][start.z][pidx].theta) += 2.0;
+                    count_map(x, y, theta) += 2.0;
                 }
                 else {
-                    count_map(x, y, VisibilityRings_[robotnum][start.z][pidx].theta) += 1.0;
+                    count_map(x, y, theta) += 1.0;
                 }
             }
         }
@@ -677,14 +680,17 @@ void ExplorationPlanner::raycast3d_hexa(const SearchPts_c& start, int hexanum)
 
     auto& count_map = counts_[hexanum];
     for (size_t pidx = 0; pidx < VisibilityRings_[hexanum][start.z].size(); pidx++) {
-        int x, y, z;
+        int x, y, z, theta;
         x = VisibilityRings_[hexanum][start.z][pidx].x + start.x;
         y = VisibilityRings_[hexanum][start.z][pidx].y + start.y;
         z = robots_[hexanum].SensorHeight_;
+        // note: leaving this here to serve as a reminder of the worst bug of the UTACC Project
+        // theta = (VisibilityRings_[hexanum][start.z][pidx].theta) % NumAngles_;
+        theta = (VisibilityRings_[hexanum][start.z][pidx].theta + (NumAngles_ >> 1)) % NumAngles_;
         if (coverage_.Getval(x, y, z) == FREESPACE) {
             bool result = bresenham_line_3D(start.x, start.y, start.z, x, y, z);
             if (result) {
-                count_map(x, y, VisibilityRings_[hexanum][start.z][pidx].theta) += 1.0;
+                count_map(x, y, theta) += 1.0;
             }
         }
     }
@@ -696,6 +702,7 @@ bool ExplorationPlanner::inside_room(int x, int y) const
         ROS_WARN("Invalid room boundaries => No room");
         return true;
     }
+
     return x >= room_min_x_ && x <= room_max_x_ && y >= room_min_y_ && y <= room_max_y_;
 }
 
