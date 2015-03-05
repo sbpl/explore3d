@@ -2,6 +2,7 @@
 ///(c) 2014
 ///ROS Wrapper for 3-D exploration module
 
+#include <sys/time.h>
 #include <explore3d/exploration_thread.hpp>
 
 #include <cassert>
@@ -47,7 +48,9 @@ ExplorationThread::ExplorationThread() :
     dist_transform_pub_(),
     cost_map_pub_(),
     counts_map_pub_(),
-    score_map_pub_()
+    score_map_pub_(),
+    m_map_stats_log(nullptr),
+    m_received_any_request(false)
 {
 }
 
@@ -83,6 +86,21 @@ bool ExplorationThread::initialize()
         return false;
     }
 
+    timeval t;
+    if (gettimeofday(&t, NULL) != 0) {
+        ROS_ERROR("Failed to get time of day. WTF");
+        return false;
+    }
+
+    std::stringstream stats_fname_stream;
+    std::string stats_dir = "/home/utacc/utacc_stats/";
+    stats_fname_stream << stats_dir << "map_stats_" << t.tv_sec; // TODO: parameterize this statistics gathering and directory
+    m_map_stats_log = fopen(stats_fname_stream.str().c_str(), "w");
+    if (!m_map_stats_log) {
+        ROS_ERROR("Failed to open file %s for writing", stats_fname_stream.str().c_str());
+        return false;
+    }
+
     initialized_ = true;
     return initialized_;
 }
@@ -106,6 +124,7 @@ void ExplorationThread::shutdown()
 
 void ExplorationThread::update_map(const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& cloud)
 {
+    int num_cells_free = 0, num_cells_obstacle = 0, num_cells_unknown = 0;
     for (size_t pidx = 0; pidx < cloud->points.size(); pidx++) {
         // convert coordinates to discrete in map frame
         MapElement_c pt;
@@ -122,6 +141,34 @@ void ExplorationThread::update_map(const pcl::PointCloud<pcl::PointXYZI>::ConstP
         // only keep around unique coordinates with the most recent data field
         auto res = curr_map_points_.insert(std::make_pair(pt, 0x00));
         res.first->second = cloud->points[pidx].intensity;
+
+        if (cloud->points[pidx].intensity == params_.obs) {
+            ++num_cells_obstacle;
+        }
+        else if (cloud->points[pidx].intensity == params_.freespace) {
+            ++num_cells_free;
+        }
+        else if (cloud->points[pidx].intensity == params_.unk) {
+            ++num_cells_unknown;
+        }
+    }
+
+    if (m_received_any_request) {
+        // log map statics to file
+        timeval t;
+        if (gettimeofday(&t, NULL) != 0) {
+            ROS_ERROR("Faild to get time of day");
+        }
+
+        // log map statistics
+        if (t.tv_sec != 0) {
+            if (fprintf(m_map_stats_log, "time: %d, freespace: %d, obstacle: %d, unknown: %d\n", t.tv_sec, num_cells_free, num_cells_obstacle, num_cells_unknown) < 0) {
+                ROS_ERROR("Error writing to map stats log file");
+            }
+            else {
+                fflush(m_map_stats_log);
+            }
+        }
     }
 
     got_first_map_update_ = true;
@@ -195,6 +242,8 @@ bool ExplorationThread::compute_goal(std::size_t ridx, const ResultCallback& cal
         return false;
     }
 
+    m_received_any_request = true;
+
     // under above lock, save state of robot poses and map
     ROS_INFO("Request to compute goals received");
     plannerthread_curr_locations_ = curr_locations_;
@@ -228,6 +277,8 @@ bool ExplorationThread::compute_all_goals(const ResultCallback& callback)
         return false;
     }
 
+    m_received_any_request = true;
+
     std::unique_lock<std::mutex> lock(data_mutex_);
 
     // under above lock, save state of robot poses and map
@@ -256,6 +307,25 @@ void ExplorationThread::publish_maps()
     std::unique_lock<std::mutex> lock(data_mutex_);
     this->publish_goal_cloud();
     this->publish_planner_maps();
+}
+
+void ExplorationThread::quick_log(const std::string& message)
+{
+    if (!this->initialized()) {
+        ROS_ERROR("Failed to quick log on uninitialized exploration thread");
+        return;
+    }
+
+    timeval t;
+    if (gettimeofday(&t, NULL) != 0) {
+        ROS_ERROR("Failed to get time of day. WTF");
+        return;
+    }
+
+    if (fprintf(m_map_stats_log, "[QUICKLOG] %d: %s\n", t.tv_sec, message.c_str()) < 0) {
+        ROS_ERROR("Failed to write '%s' to file", message.c_str());
+        return;
+    }
 }
 
 bool ExplorationThread::construct_robot_from_config(XmlRpc::XmlRpcValue& params, Robot_c& robot)

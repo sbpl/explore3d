@@ -4,6 +4,7 @@
 #ifndef ExplorationThread_h
 #define ExplorationThread_h
 
+#include <cstdio>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -76,6 +77,9 @@ public:
     /// @brief Publishes planner maps for debugging; blocking if exploration planner is currently planning.
     void publish_maps();
 
+    /// @brief Insert a quick message into the statistics log.
+    void quick_log(const std::string& message);
+
 private:
 
     struct MapElementCompare
@@ -138,6 +142,9 @@ private:
     std::vector<ros::Publisher> counts_map_pub_;
     std::vector<ros::Publisher> score_map_pub_;
     /// @}
+
+    FILE* m_map_stats_log;
+    bool m_received_any_request;
 
     bool read_map_params();
     bool read_cost_params();
