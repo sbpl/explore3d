@@ -1,30 +1,51 @@
-cmake_minimum_required(VERSION 2.4.6)
-include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
+cmake_minimum_required(VERSION 2.8.3)
+project(explore3d)
 
-# Set the build type.  Options are:
-#  Coverage       : w/ debug symbols, w/o optimization, w/ code-coverage
-#  Debug          : w/ debug symbols, w/o optimization
-#  Release        : w/o debug symbols, w/ optimization
-#  RelWithDebInfo : w/ debug symbols, w/ optimization
-#  MinSizeRel     : w/o debug symbols, w/ optimization, stripped binaries
+set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
-set(ROS_COMPILE_FLAGS "-std=c++0x -Wall -pthread -O3") #-flto -Ofast -pedantic")
-set(ROS_BUILD_TYPE Release)
+find_package(catkin REQUIRED
+    COMPONENTS 
+        nav_msgs 
+        pcl_ros 
+        roscpp 
+        rospy 
+        sensor_msgs 
+        std_msgs 
+        std_srvs 
+        utacc_msgs)
 
-rosbuild_init()
-
-set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
-
-find_package(PkgConfig REQUIRED)
 find_package(sbpl REQUIRED)
-include_directories(${SBPL_INCLUDE_DIRS})
-link_directories(${SBPL_LIBRARY_DIRS})
+set(sbpl_INCLUDE_DIRS ${SBPL_INCLUDE_DIRS})
+set(sbpl_LIBRARIES ${SBPL_LIBRARIES})
 
-rosbuild_add_library(
+find_package(PCL REQUIRED)
+
+catkin_package(
+    INCLUDE_DIRS
+        include
+    LIBRARIES
+        explore3d
+    CATKIN_DEPENDS
+        nav_msgs
+        pcl_ros
+        roscpp
+        sensor_msgs
+        tf
+    DEPENDS
+        PCL
+        sbpl)
+
+include_directories(${PCL_INCLUDE_DIRS})
+include_directories(${SBPL_INCLUDE_DIRS})
+include_directories(${catkin_INCLUDE_DIRS})
+include_directories(include)
+
+add_library(
     explore3d
     src/coverage_map.cpp
     src/exploration_planner.cpp
     src/exploration_thread.cpp
     src/exploration_structs.cpp)
 
-target_link_libraries(${PROJECT_NAME} ${SBPL_LIBRARIES})
+target_link_libraries(explore3d ${SBPL_LIBRARIES} ${PCL_LIBRARIES})

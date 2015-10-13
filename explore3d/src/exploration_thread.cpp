@@ -162,7 +162,7 @@ void ExplorationThread::update_map(const pcl::PointCloud<pcl::PointXYZI>::ConstP
 
         // log map statistics
         if (t.tv_sec != 0) {
-            if (fprintf(m_map_stats_log, "time: %d, freespace: %d, obstacle: %d, unknown: %d\n", t.tv_sec, num_cells_free, num_cells_obstacle, num_cells_unknown) < 0) {
+            if (fprintf(m_map_stats_log, "time: %ld, freespace: %d, obstacle: %d, unknown: %d\n", t.tv_sec, num_cells_free, num_cells_obstacle, num_cells_unknown) < 0) {
                 ROS_ERROR("Error writing to map stats log file");
             }
             else {
@@ -322,7 +322,7 @@ void ExplorationThread::quick_log(const std::string& message)
         return;
     }
 
-    if (fprintf(m_map_stats_log, "[QUICKLOG] %d: %s\n", t.tv_sec, message.c_str()) < 0) {
+    if (fprintf(m_map_stats_log, "[QUICKLOG] %ld: %s\n", t.tv_sec, message.c_str()) < 0) {
         ROS_ERROR("Failed to write '%s' to file", message.c_str());
         return;
     }
