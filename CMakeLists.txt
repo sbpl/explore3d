@@ -5,14 +5,14 @@ set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 find_package(catkin REQUIRED
-    COMPONENTS 
-        nav_msgs 
-        pcl_ros 
-        roscpp 
-        rospy 
-        sensor_msgs 
-        std_msgs 
-        std_srvs 
+    COMPONENTS
+        nav_msgs
+        pcl_ros
+        roscpp
+        rospy
+        sensor_msgs
+        std_msgs
+        std_srvs
         utacc_msgs)
 
 find_package(sbpl REQUIRED)
@@ -49,3 +49,15 @@ add_library(
     src/exploration_structs.cpp)
 
 target_link_libraries(explore3d ${SBPL_LIBRARIES} ${PCL_LIBRARIES})
+
+install(
+    TARGETS explore3d
+    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+    ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION})
+install(
+    DIRECTORY include/explore3d/
+    DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
+install(DIRECTORY config DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+install(DIRECTORY launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+install(DIRECTORY scripts DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
