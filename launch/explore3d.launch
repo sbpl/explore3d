@@ -1,0 +1,8 @@
+<launch>
+    <node name="explore3d" pkg="explore3d" type="explore3d">
+        <rosparam command="load" file="$(find explore3d)/config/explore3d.yaml"/>
+        <remap from="combined_pose" to="robot_poses"/>
+        <remap from="combined_map" to="merged_map"/>
+        <remap from="goal_list" to="robot_goals"/>
+    </node>
+</launch>

@@ -12,8 +12,7 @@ find_package(catkin REQUIRED
         rospy
         sensor_msgs
         std_msgs
-        std_srvs
-        utacc_msgs)
+        std_srvs)
 
 find_package(sbpl REQUIRED)
 set(sbpl_INCLUDE_DIRS ${SBPL_INCLUDE_DIRS})

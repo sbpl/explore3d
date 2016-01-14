@@ -1,8 +1,7 @@
-executive_rate: 2.0
 planner_rate: 0.5
 
 #map params
-frame_id: /map
+frame_id: map
 size_x: 1200
 size_y: 700
 size_z: 50
@@ -12,12 +11,12 @@ origin_z: 0.0
 resolution: 0.10
 
 #cost params
-#objectmaxelev: 
-#obsvalue: 
-#freevalue: 
-#unkvalue: 
+#objectmaxelev:
+#obsvalue:
+#freevalue:
+#unkvalue:
 #numangles:
-#mindist: 
+#mindist:
 backwards_penalty: 10.0
 
 robot_params: [
