@@ -92,9 +92,9 @@ bool ExplorationThread::initialize()
         return false;
     }
 
+    // TODO: parameterize directory for statistics gathering
     std::stringstream stats_fname_stream;
-    std::string stats_dir = "/home/utacc/utacc_stats/";
-    stats_fname_stream << stats_dir << "map_stats_" << t.tv_sec; // TODO: parameterize this statistics gathering and directory
+    stats_fname_stream << "map_stats_" << t.tv_sec;
     m_map_stats_log = fopen(stats_fname_stream.str().c_str(), "w");
     if (!m_map_stats_log) {
         ROS_ERROR("Failed to open file %s for writing", stats_fname_stream.str().c_str());
@@ -555,7 +555,7 @@ void ExplorationThread::plannerthread()
             else {
                 result.success = true;
                 result.goals = last_goals_;
-                if (goal_ridx_ < params_.robots.size()) { 
+                if (goal_ridx_ < params_.robots.size()) {
                     // truncate goals result to the requested goal
                     if (goal_ridx_ != 0) {
                         std::swap(result.goals.poses[0], result.goals.poses[goal_ridx_]);
