@@ -285,8 +285,6 @@ bool ExplorationPlanner::Dijkstra(const Locations_c& start, int robotnum)
         }
     }
 
-
-
     return true;
 }
 
@@ -334,7 +332,7 @@ bool ExplorationPlanner::FindNearestCollisionFreeCell(const Locations_c& start, 
         const int robot_size = robots_[robotnum].CircularSize_;
         const bool curr_is_valid = coverage_.OnInflatedMap(curr->x(), curr->y(), curr->z(), robotnum, robot_size);
         // shouldn't this be redundant with the above check?
-        const bool is_freespace = curr_is_valid && coverage_.Getval(curr->x(), curr->y(), curr->z()) == FREESPACE; 
+        const bool is_freespace = curr_is_valid && coverage_.Getval(curr->x(), curr->y(), curr->z()) == FREESPACE;
         const bool is_valid = curr_is_valid && is_freespace;
         if (is_valid) {
             // assign the real collision-free start state and return from the search
@@ -358,7 +356,7 @@ bool ExplorationPlanner::FindNearestCollisionFreeCell(const Locations_c& start, 
             if (!succ.closed()) {
                 CostType succ_cost = succ.cost();
                 // note: remove arbitrary penalty
-                CostType new_cost = curr->cost() + mp_[midx].cost; 
+                CostType new_cost = curr->cost() + mp_[midx].cost;
                 if (new_cost < succ_cost) {
                     succ.set_cost(new_cost);
                     CKey succkey = CreateKey(new_cost);
@@ -417,7 +415,7 @@ void ExplorationPlanner::CreateFrontier(void)
     Frontier3d_ = coverage_.GetFrontier3d();
     ClearCounts();
 
-    const std::size_t HEXA_IDX = 1; 
+    const std::size_t HEXA_IDX = 1;
     // TODO: various hacks to enforce different behavior for the hexacopter...factor out per-robot cost functions or
     // something instead of making it the default behavior for robot 2 -_-
 
