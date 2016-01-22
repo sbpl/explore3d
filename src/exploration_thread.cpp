@@ -396,7 +396,7 @@ bool ExplorationThread::initialized() const
 bool ExplorationThread::read_map_params()
 {
     int numangles;
-    ph_.param<std::string>("frame_id", frame_id_, "/map");
+    ph_.param<std::string>("frame_id", frame_id_, "map");
     ph_.param<int>("map_size_x", size_x_, 500);
     ph_.param<int>("map_size_y", size_y_, 500);
     ph_.param<int>("map_size_z", size_z_, 50);
