@@ -12,7 +12,7 @@
 #if PCL_MINOR_VERSION == 6 and PCL_MAJOR_VERSION == 1
 #define ros_to_pcl_time_now ros::Time::now();
 #else
-#define ros_to_pcl_time_now ros::Time::now().toNSec();
+#define ros_to_pcl_time_now ros::Time::now().toSec();
 #endif
 
 ExplorationThread::ExplorationThread() :
@@ -616,6 +616,12 @@ void ExplorationThread::goal_locations_to_path_msg(
 {
     msg.header.frame_id = frame_id_;
     msg.header.stamp = ros::Time::now();
+
+    if (goal_locations.empty()) {
+        msg.poses.clear();
+        return;
+    }
+
     msg.poses.resize(2);
 
     //convert goals to world frame, continuous
@@ -681,8 +687,13 @@ void ExplorationThread::publish_point_cloud(const std::vector<pcl::PointXYZI>& p
 {
     //make point cloud for goals
     pcl::PointCloud<pcl::PointXYZI> cloud;
-    cloud.header.stamp = ros_to_pcl_time_now;
-    cloud.header.frame_id = frame_id_;
+
+    std_msgs::Header header;
+    header.stamp = ros::Time::now();
+    header.frame_id = frame_id_;
+
+    cloud.header = pcl_conversions::toPCL(header);
+
     cloud.height = 1;
 
     cloud.points.reserve(points.size());
