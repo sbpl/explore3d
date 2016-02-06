@@ -297,6 +297,8 @@ bool ExplorationPlanner::FindNearestCollisionFreeCell(const Locations_c& start, 
                 coverage_.Getval(start.x, start.y, start.z) == FREESPACE;
     }
 
+    ROS_INFO("Finding nearest collision-free cell to (%d, %d, %d)", start.x, start.y, start.z);
+
     // Preallocate search state table
     au::Grid<2, SearchPtState> states(coverage_.x_size_, coverage_.y_size_);
     for (std::size_t x = 0; x < states.size(0); ++x) {
@@ -325,6 +327,7 @@ bool ExplorationPlanner::FindNearestCollisionFreeCell(const Locations_c& start, 
     collision_free_start.theta = -1;
 
     // run a dijkstra search to find the nearest collision-free cell to the robot pose
+    int num_expands = 0;
     while (!OPEN.emptyheap()) {
         SearchPtState* curr = (SearchPtState*)OPEN.deleteminheap();
         curr->set_closed(true);
@@ -343,6 +346,7 @@ bool ExplorationPlanner::FindNearestCollisionFreeCell(const Locations_c& start, 
             break;
         }
 
+        ++num_expands;
         for (size_t midx = 0; midx < mp_.size(); midx++) {
             int succ_x = curr->x() + mp_[midx].x;
             int succ_y = curr->y() + mp_[midx].y;
@@ -374,9 +378,11 @@ bool ExplorationPlanner::FindNearestCollisionFreeCell(const Locations_c& start, 
     if (collision_free_start.x >= 0) {
         assert(collision_free_start.y >= 0 && collision_free_start.z >= 0 && collision_free_start.theta >= 0);
         out = collision_free_start;
+        ROS_INFO("Found a collision-free start cell at (%d, %d, %d)", collision_free_start.x, collision_free_start.y, collision_free_start.z);
         return true;
     }
     else {
+        ROS_ERROR("Failed to find a collision free start state after %d expansions", num_expands);
         return false;
     }
 }
@@ -697,7 +703,7 @@ void ExplorationPlanner::raycast3d_hexa(const SearchPts_c& start, int hexanum)
 bool ExplorationPlanner::inside_room(int x, int y) const
 {
     if (room_min_x_ < 0 || room_min_y_ < 0 || room_max_x_ > (int)coverage_.x_size_ - 1 || room_max_y_ > (int)coverage_.y_size_ - 1) {
-        ROS_WARN("Invalid room boundaries => No room");
+        ROS_WARN_THROTTLE(1.0, "Invalid room boundaries [%d,%d] X [%d,%d]", room_min_x_, room_min_y_, room_max_x_, room_max_y_);
         return true;
     }
 
