@@ -645,6 +645,9 @@ void ExplorationPlanner::raycast3d(const SearchPts_c& start, int robotnum)
         int x, y, z, theta;
         x = VisibilityRings_[robotnum][start.z][pidx].x + start.x;
         y = VisibilityRings_[robotnum][start.z][pidx].y + start.y;
+        if (!inside_room(start.x, start.y) || !inside_room(x, y)) {
+            continue;
+        }
         z = robots_[robotnum].SensorHeight_;
         // note: leaving this here to serve as a reminder of the worst bug of the UTACC Project
         // theta = (VisibilityRings_[robotnum][start.z][pidx].theta) % NumAngles_;
