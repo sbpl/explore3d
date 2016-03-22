@@ -42,7 +42,7 @@ public:
 
     void Setval(int x, int y, int z, char val)
     {
-        if (OnMap(x,y,z)) {
+        if (OnMap(x, y, z)) {
             map_(x, y, z) = val;
             this->UpdateMotionLevelMaps(x, y, z, val);
         }
@@ -75,7 +75,7 @@ public:
     /// @brief Return the distance to the nearest obstacle, in cells, from cell (\x, \y) or -1 if the cell is off the map.
     double ReturnDistToObs(int rn, int x, int y) const
     {
-        if (OnMap(x,y,0)) {
+        if (OnMap(x, y, 0)) {
             return (double)DistToObs_[rn](x, y) / 100.0;
         }
         else {
