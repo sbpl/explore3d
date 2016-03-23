@@ -48,7 +48,7 @@ public:
         }
     }
 
-    unsigned char Getval(int x, int y, int z)
+    unsigned char Getval(int x, int y, int z) const
     {
         if (OnMap(x, y, z)) {
             return map_(x, y, z);
@@ -67,7 +67,7 @@ public:
     void UpdateDistances();
 
     /// @brief Return whether cell (\x, \y, \z) is \robot_size cells away from obstacle cells for robot \rn.
-    bool OnInflatedMap(int x, int y, int z, int rn, int robot_size)
+    bool OnInflatedMap(int x, int y, int z, int rn, int robot_size) const
     {
         return OnMap(x, y, z) && DistToObs_[rn](x, y) >= robot_size * 100;
     }

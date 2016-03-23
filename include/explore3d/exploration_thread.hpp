@@ -57,8 +57,10 @@ public:
     bool ready_to_plan() const;
     bool busy() const;
 
-    /// @brief Asynchronously compute a new goal for a particular robot given the current map and robot poses
-    /// @param ridx Index of the robot to compute a goal for in [0, this->params().robots.size())
+    /// @brief Asynchronously compute a new goal for a particular robot given
+    ///     the current map and robot poses.
+    /// @param ridx Index of the robot to compute a goal for in
+    ///     [0, this->params().robots.size())
     /// @param callback Callback to be called by the Exploration Thread when the
     ///     goal is finished being computed
     /// @return true if the Exploration Planner is ready to run (as given by
@@ -133,7 +135,7 @@ private:
     bool initialized_;
 
     /// @name Debug Visualization Publishers
-    /// @{ 
+    /// @{
     ros::Publisher goal_point_cloud_pub_;
     ros::Publisher frontier_map_pub_;
     std::vector<ros::Publisher> coverage_map_pub_;

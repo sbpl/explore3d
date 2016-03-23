@@ -69,18 +69,26 @@ public:
     std::vector<std::vector<std::vector<pts2d> > > VisibilityRings_;    // [robot][z][points]
 
     void Init(ExpParams_c initparams);
-    
-    void UpdateMap(CoverageMap_c new_map);
-    void PartialUpdateMap(std::vector<MapElement_c> pts);
 
-    Locations_c NewGoal(std::size_t ridx, std::vector<Locations_c>& RobotLocations);
+    void UpdateMap(CoverageMap_c new_map);
+    void PartialUpdateMap(const std::vector<MapElement_c>& pts);
+
+    /// \brief Compute a new exploration goal for a single robot
+    bool NewGoal(
+        size_t ridx,
+        std::vector<Locations_c>& RobotLocations,
+        Locations_c& goal);
+
+    /// \brief Compute new exploration goals for both robots.
+    ///
+    /// The exploration goals are returned in a vector whose elements correspond
+    /// to the robot with the associated index. Failure to compute new goals is
+    /// indicated by a returned empty vector.
     std::vector<Locations_c> NewGoals(std::vector<Locations_c> RobotLocations);
 
-protected:
+private:
 
     std::vector<Robot_c> robots_;
-
-private:
 
     friend class CoverageMap_c;
 
@@ -115,8 +123,29 @@ private:
     };
 
     void PrecalcVisibilityCircles(void);
+
+    // Fill CostToPts_[robotnum] with the shortest path cost to all cells.
+    //
+    // This function uses the projected coverage map corresponding to the input
+    // robot index to compute the shortest path costs to all cells from the
+    // input start state. The path costs are stored in CostToPts_[robotnum].
+    //
+    // This function does its best to be robust to starts-in-collision by first
+    // finding the nearest cell to the start state that is collision-free. In
+    // the nominal case this is just the start cell. If the
+    // escape-from-collision search is unsuccessful (there are no cells in the
+    // projected coverage map that are valid), then this function will return
+    // false. All other situations should return true.
+    //
+    // param start The starting cell
+    // param robotnum The index of the robot to compute shortest paths for
     bool Dijkstra(const Locations_c& start, int robotnum);
-    bool FindNearestCollisionFreeCell(const Locations_c& start, int robotnum, Locations_c& out);
+
+    bool FindNearestCollisionFreeCell(
+        const Locations_c& start,
+        int robotnum,
+        Locations_c& out) const;
+
     void CreateFrontier(void);
     void GenMotionSteps(void);
     void GenVisibilityRing(void);
@@ -125,11 +154,19 @@ private:
     void printMap(int height);
     void printCosts(uint x0, uint y0, uint x1, uint y1, uint rn);
     void printCounts(uint x0, uint y0, uint x1, uint y1, uint rn);
-    CostType EvalFxn(uint x, uint y, uint z, uint a, uint rn);
 
-    // convert a floating-point cost value to a fixed point value for use with CHeap
-    CKey CreateKey(double val);
-    CostType ComputeMotionPenalty(const Locations_c& start, const SearchPtState& s, const SearchPtState& t);
+    // Compute the score for a given cell based on the values in CostToPts_,
+    // counts_ at the given robot index, and the values of goal_ at all other
+    // robot indices.
+    CostType EvalFxn(uint x, uint y, uint z, uint a, uint rn) const;
+
+    // convert a floating-point cost value to a fixed point value for use with
+    // CHeap
+    CKey CreateKey(double val) const;
+    CostType ComputeMotionPenalty(
+        const Locations_c& start,
+        const SearchPtState& s,
+        const SearchPtState& t);
 
     void raycast3d(const SearchPts_c& start, int robotnum);
     void raycast3d_hexa(const SearchPts_c& start, int hexanum);
