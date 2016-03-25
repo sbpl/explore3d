@@ -74,17 +74,20 @@ public:
     void PartialUpdateMap(const std::vector<MapElement_c>& pts);
 
     /// \brief Compute a new exploration goal for a single robot
-    bool NewGoal(
-        size_t ridx,
-        std::vector<Locations_c>& RobotLocations,
-        Locations_c& goal);
+    ///
+    /// \param robot_pose Copy required since the height of the robot can be
+    ///     modified to the assumed nominal height
+    bool NewGoal(size_t ridx, Locations_c robot_pose, Locations_c& goal);
 
     /// \brief Compute new exploration goals for both robots.
     ///
     /// The exploration goals are returned in a vector whose elements correspond
     /// to the robot with the associated index. Failure to compute new goals is
     /// indicated by a returned empty vector.
-    std::vector<Locations_c> NewGoals(std::vector<Locations_c> RobotLocations);
+    ///
+    /// \param robot_poses Copy required since the height of the robot can be
+    ///     modified to the assumed nominal height
+    std::vector<Locations_c> NewGoals(std::vector<Locations_c> robot_poses);
 
 private:
 
@@ -156,6 +159,13 @@ private:
     bool ComputeInformationGain(
         int ridx,
         const std::vector<SearchPts_c>& frontier);
+
+    // Select the next exploration goal for the given robot.
+    //
+    // This function takes into account the current state of the robot's
+    // costmap, the robot's score map, and the most recent goals for the other
+    // robots.
+    void SelectGoal(size_t ridx);
 
     void GenMotionSteps();
     void GenVisibilityRing();

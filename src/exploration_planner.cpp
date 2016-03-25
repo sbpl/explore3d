@@ -1,36 +1,11 @@
-#include <explore3d/exploration_planner.hpp>
-
 /// 3-D Exploration Library
 /// (c) 2014 Jonathan Michael Butzke
-/* Functions written by Jonathan Michael Butzke except where otherwise indicated
- * uses Bresenham line algorithm for rays
- * (c) 2009, 2014
- */
+///
+/// Functions written by Jonathan Michael Butzke except where otherwise indicated
+/// uses Bresenham line algorithm for rays
+/// (c) 2009, 2014
 
-/* inputs:
- * h *eight of hexa flight
- * height of hexa sensor
- * depression/FOV angles of hexa sensor
- * detection range of hexa sensor
- * height of segbot motion
- * height of segbot sensor
- * elevation/FOV  angles of segbot sensor
- * detection range of segbot sensor
- * occupancy grid of world
- */
-
-//Get map
-//x run Dijkstra on robot level to get cost to frontier points (and find accessable areas)
-//x block off unaccessable areas (leave just the known/unknown boundary)
-//x find areas in 3-d that are not surrounded by obstacles and border free space
-//x  determine vertical frontiers based on 3-d ray casting to ground or hexa sensor level (use different depression angles for each out to detection range)
-
-// if early in the process:
-// weed out small groups
-// do soemthing smart
-
-// if not
-// go to closest
+#include <explore3d/exploration_planner.hpp>
 
 #include <cassert>
 #include <algorithm>
@@ -495,28 +470,13 @@ bool ExplorationPlanner::ComputeInformationGain(
     return true;
 }
 
-bool ExplorationPlanner::NewGoal(
-    size_t ridx,
-    std::vector<Locations_c>& robot_locations,
-    Locations_c& goal)
+void ExplorationPlanner::SelectGoal(size_t ridx)
 {
-    Locations_c robot_location = robot_locations[ridx];
-    robot_location.z = robots_[ridx].MotionHeight_;
-
-    if (!ComputeTraversalCosts(robot_location, ridx)) {
-        ROS_ERROR("Failed to compute traversal costs for robot %zu", ridx);
-        return false;
-    }
-
-    if (!ComputeInformationGain(ridx)) {
-        ROS_ERROR("Failed to compute information gain for robot %zu", ridx);
-        return false;
-    }
-
-    scores_[ridx].assign(0.0);
-
     goal_[ridx].cost = 0;
     goal_[ridx].z = robots_[ridx].MotionHeight_;
+
+    // clear scores
+    scores_[ridx].assign(0.0);
 
     // evaluate the scores for each cell
     for (auto sit = scores_[ridx].begin(); sit != scores_[ridx].end(); ++sit) {
@@ -532,6 +492,26 @@ bool ExplorationPlanner::NewGoal(
     goal_[ridx].x = maxe.coord(0);
     goal_[ridx].y = maxe.coord(1);
     goal_[ridx].theta = maxe.coord(2);
+}
+
+bool ExplorationPlanner::NewGoal(
+    size_t ridx,
+    Locations_c robot_pose,
+    Locations_c& goal)
+{
+    robot_pose.z = robots_[ridx].MotionHeight_;
+
+    if (!ComputeTraversalCosts(robot_pose, ridx)) {
+        ROS_ERROR("Failed to compute traversal costs for robot %zu", ridx);
+        return false;
+    }
+
+    if (!ComputeInformationGain(ridx)) {
+        ROS_ERROR("Failed to compute information gain for robot %zu", ridx);
+        return false;
+    }
+
+    SelectGoal(ridx);
 
     // copy over goal
     goal.x = goal_[ridx].x;
@@ -543,46 +523,26 @@ bool ExplorationPlanner::NewGoal(
 }
 
 std::vector<Locations_c> ExplorationPlanner::NewGoals(
-    std::vector<Locations_c> RobotLocations)
+    std::vector<Locations_c> robot_poses)
 {
-    for (size_t ridx = 0; ridx < RobotLocations.size(); ++ridx) {
-        RobotLocations[ridx].z = robots_[ridx].MotionHeight_;
-        if (!ComputeTraversalCosts(RobotLocations[ridx], ridx)) {
+    for (size_t ridx = 0; ridx < robot_poses.size(); ++ridx) {
+        robot_poses[ridx].z = robots_[ridx].MotionHeight_;
+        if (!ComputeTraversalCosts(robot_poses[ridx], ridx)) {
             ROS_ERROR("Failed to compute cell cost expansion");
             return { };
         }
     }
 
     Frontier3d_ = coverage_.GetFrontier3d();
-    for (size_t ridx = 0; ridx < RobotLocations.size(); ++ridx) {
+    for (size_t ridx = 0; ridx < robot_poses.size(); ++ridx) {
         if (!ComputeInformationGain(ridx, Frontier3d_)) {
             ROS_ERROR("Failed to compute information gain for robot %zu", ridx);
             return { };
         }
     }
 
-    for (size_t ridx = 0; ridx < robots_.size(); ++ridx) {
-        scores_[ridx].assign(0.0);
-    }
-
     for (size_t ridx = 0; ridx < robots_.size(); ridx++) {
-        goal_[ridx].cost = 0;
-        goal_[ridx].z = robots_[ridx].MotionHeight_;
-
-        // evaluate the scores for each cell
-        for (auto sit = scores_[ridx].begin(); sit != scores_[ridx].end(); ++sit) {
-            (*sit) = EvalFxn(sit.coord(0), sit.coord(1), goal_[ridx].z, sit.coord(2), ridx);
-        }
-
-        // take the cell with the highest score
-        auto maxe = std::max_element(scores_[ridx].begin(), scores_[ridx].end());
-        assert(maxe != scores_[ridx].end());
-
-        // fill in the goal
-        goal_[ridx].cost = *maxe;
-        goal_[ridx].x = maxe.coord(0);
-        goal_[ridx].y = maxe.coord(1);
-        goal_[ridx].theta = maxe.coord(2);
+        SelectGoal(ridx);
     }
 
     std::vector<Locations_c> goals;

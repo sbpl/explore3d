@@ -292,7 +292,8 @@ bool ExplorationThread::compute_all_goals(const ResultCallback& callback)
         plannerthread_map_points_.push_back(e);
     }
 
-    goal_ridx_ = params_.robots.size(); // signals to compute goals for all robots
+    // signals to compute goals for all robots
+    goal_ridx_ = params_.robots.size();
 
     // marks thread as busy
     goals_requested_ = true;
@@ -530,7 +531,22 @@ void ExplorationThread::plannerthread()
             // TODO: implement ExplorationPlanner::NewGoal to compute goal only for the requested robot
             ROS_INFO("Computing goals...");
             start = std::chrono::high_resolution_clock::now();
-            std::vector<Locations_c> goals = EP_.NewGoals(plannerthread_curr_locations_);
+
+            std::vector<Locations_c> goals;
+            if (goal_ridx_ < params_.robots.size()) {
+                Locations_c goal;
+                if (EP_.NewGoal(goal_ridx_, plannerthread_curr_locations_[goal_ridx_], goal)) {
+                    goals.resize(params_.robots.size());
+                    goals[goal_ridx_] = goal;
+                }
+            }
+            else if (goal_ridx_ == params_.robots.size()) {
+                goals = EP_.NewGoals(plannerthread_curr_locations_);
+            }
+            else {
+                ROS_ERROR("Invalid robot index requested");
+            }
+
             finish = std::chrono::high_resolution_clock::now();
             ROS_INFO("Computing goals took %0.3f seconds", std::chrono::duration<double>(finish - start).count());
 
