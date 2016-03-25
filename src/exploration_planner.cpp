@@ -133,12 +133,18 @@ void ExplorationPlanner::GenVisibilityRing(void)
     }
 }
 
-void ExplorationPlanner::ClearCounts(void)
+void ExplorationPlanner::ClearCounts()
 {
     for (size_t ridx = 0; ridx < robots_.size(); ++ridx) {
         counts_[ridx].assign(0.0);
         scores_[ridx].assign(0.0);
     }
+}
+
+void ExplorationPlanner::ClearInformationGain(int ridx)
+{
+    counts_[ridx].assign(0.0);
+    counts_[ridx].assign(0.0);
 }
 
 void ExplorationPlanner::printMap(int h)
@@ -183,7 +189,7 @@ void ExplorationPlanner::printCounts(uint x0, uint y0, uint x1, uint y1, uint rn
     }
 }
 
-bool ExplorationPlanner::Dijkstra(const Locations_c& start, int ridx)
+bool ExplorationPlanner::ComputeTraversalCosts(const Locations_c& start, int ridx)
 {
     Locations_c cfree_start;
     if (!FindNearestCollisionFreeCell(start, ridx, cfree_start)) {
@@ -438,60 +444,55 @@ CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn) co
     return counts_[rn](x, y, a) * CostToPts_[rn](x, y) * dist;
 }
 
-void ExplorationPlanner::CreateFrontier(void)
+bool ExplorationPlanner::ComputeInformationGain(int ridx)
 {
     Frontier3d_ = coverage_.GetFrontier3d();
-    ClearCounts();
+    return ComputeInformationGain(ridx, Frontier3d_);
+}
 
-    const std::size_t HEXA_IDX = 1;
-    // TODO: various hacks to enforce different behavior for the hexacopter...factor out per-robot cost functions or
-    // something instead of making it the default behavior for robot 2 -_-
+bool ExplorationPlanner::ComputeInformationGain(
+    int ridx,
+    const std::vector<SearchPts_c>& frontier)
+{
+    counts_[ridx].assign(0.0);
 
-    for (size_t ridx = 0; ridx < robots_.size(); ridx++) {
-        // for each frontier cell, determine viewing cells by raycasting outwards to intersect robot sensor planes
-        for (size_t pidx = 0; pidx < Frontier3d_.size(); pidx++) {
-            if (ridx == HEXA_IDX) {
-                raycast3d_hexa(Frontier3d_[pidx], ridx);
-            }
-            else {
-                raycast3d(Frontier3d_[pidx], ridx);
-            }
-        }
+    // TODO: various hacks to enforce different behavior for the
+    // hexacopter...factor out per-robot cost functions or something instead of
+    // making it the default behavior for robot 2 -_-
+    const size_t HEXA_IDX = 1;
 
+    // for each frontier cell, determine viewing cells by raycasting
+    // outwards to intersect robot sensor planes
+    for (size_t pidx = 0; pidx < frontier.size(); pidx++) {
         if (ridx == HEXA_IDX) {
-            // check if there are no cells that can be seen exclusively by the hexacopter...
-            bool no_counts = true;
-            for (auto git = counts_[HEXA_IDX].begin(); git != counts_[HEXA_IDX].end(); ++git) {
-                if (*git != 0.0) {
-                    no_counts = false;
-                    break;
-                }
-            }
-
-            if (no_counts) {
-                ROS_WARN("No cells only visible by hexacopter...reverting to normal cost function");
-                // apply the normal cost function
-                for (size_t pidx = 0; pidx < Frontier3d_.size(); pidx++) {
-                    raycast3d(Frontier3d_[pidx], ridx);
-                }
-            }
+            raycast3d_hexa(frontier[pidx], ridx);
         }
-
-        goal_[ridx].cost = 0;
-        goal_[ridx].z = robots_[ridx].MotionHeight_;
-
-        for (auto sit = scores_[ridx].begin(); sit != scores_[ridx].end(); ++sit) {
-            (*sit) = EvalFxn(sit.coord(0), sit.coord(1), goal_[ridx].z, sit.coord(2), ridx);
+        else {
+            raycast3d(frontier[pidx], ridx);
         }
-
-        auto maxe = std::max_element(scores_[ridx].begin(), scores_[ridx].end());
-        assert(maxe != scores_[ridx].end());
-
-        goal_[ridx].cost = *maxe;
-        goal_[ridx].x = maxe.coord(0);
-        goal_[ridx].y = maxe.coord(1);
-        goal_[ridx].theta = maxe.coord(2);
     }
+
+    if (ridx == HEXA_IDX) {
+        // check if there are no cells that can be seen exclusively by the
+        // hexacopter...
+        bool no_counts = true;
+        for (auto git = counts_[HEXA_IDX].begin(); git != counts_[HEXA_IDX].end(); ++git) {
+            if (*git != 0.0) {
+                no_counts = false;
+                break;
+            }
+        }
+
+        if (no_counts) {
+            ROS_WARN("No cells only visible by hexacopter...reverting to normal cost function");
+            // apply the normal cost function
+            for (size_t pidx = 0; pidx < frontier.size(); pidx++) {
+                raycast3d(frontier[pidx], ridx);
+            }
+        }
+    }
+
+    return true;
 }
 
 bool ExplorationPlanner::NewGoal(
@@ -502,9 +503,41 @@ bool ExplorationPlanner::NewGoal(
     Locations_c robot_location = robot_locations[ridx];
     robot_location.z = robots_[ridx].MotionHeight_;
 
-    if (!Dijkstra(robot_location, ridx)) {
+    if (!ComputeTraversalCosts(robot_location, ridx)) {
+        ROS_ERROR("Failed to compute traversal costs for robot %zu", ridx);
         return false;
     }
+
+    if (!ComputeInformationGain(ridx)) {
+        ROS_ERROR("Failed to compute information gain for robot %zu", ridx);
+        return false;
+    }
+
+    scores_[ridx].assign(0.0);
+
+    goal_[ridx].cost = 0;
+    goal_[ridx].z = robots_[ridx].MotionHeight_;
+
+    // evaluate the scores for each cell
+    for (auto sit = scores_[ridx].begin(); sit != scores_[ridx].end(); ++sit) {
+        (*sit) = EvalFxn(sit.coord(0), sit.coord(1), goal_[ridx].z, sit.coord(2), ridx);
+    }
+
+    // take the cell with the highest score
+    auto maxe = std::max_element(scores_[ridx].begin(), scores_[ridx].end());
+    assert(maxe != scores_[ridx].end());
+
+    // fill in the goal
+    goal_[ridx].cost = *maxe;
+    goal_[ridx].x = maxe.coord(0);
+    goal_[ridx].y = maxe.coord(1);
+    goal_[ridx].theta = maxe.coord(2);
+
+    // copy over goal
+    goal.x = goal_[ridx].x;
+    goal.y = goal_[ridx].y;
+    goal.z = goal_[ridx].z;
+    goal.theta = goal_[ridx].theta;
 
     return true;
 }
@@ -512,15 +545,45 @@ bool ExplorationPlanner::NewGoal(
 std::vector<Locations_c> ExplorationPlanner::NewGoals(
     std::vector<Locations_c> RobotLocations)
 {
-    for (size_t ridx = 0; ridx < RobotLocations.size(); ridx++) {
+    for (size_t ridx = 0; ridx < RobotLocations.size(); ++ridx) {
         RobotLocations[ridx].z = robots_[ridx].MotionHeight_;
-        if (!Dijkstra(RobotLocations[ridx], ridx)) {
+        if (!ComputeTraversalCosts(RobotLocations[ridx], ridx)) {
             ROS_ERROR("Failed to compute cell cost expansion");
             return { };
         }
     }
 
-    CreateFrontier();
+    Frontier3d_ = coverage_.GetFrontier3d();
+    for (size_t ridx = 0; ridx < RobotLocations.size(); ++ridx) {
+        if (!ComputeInformationGain(ridx, Frontier3d_)) {
+            ROS_ERROR("Failed to compute information gain for robot %zu", ridx);
+            return { };
+        }
+    }
+
+    for (size_t ridx = 0; ridx < robots_.size(); ++ridx) {
+        scores_[ridx].assign(0.0);
+    }
+
+    for (size_t ridx = 0; ridx < robots_.size(); ridx++) {
+        goal_[ridx].cost = 0;
+        goal_[ridx].z = robots_[ridx].MotionHeight_;
+
+        // evaluate the scores for each cell
+        for (auto sit = scores_[ridx].begin(); sit != scores_[ridx].end(); ++sit) {
+            (*sit) = EvalFxn(sit.coord(0), sit.coord(1), goal_[ridx].z, sit.coord(2), ridx);
+        }
+
+        // take the cell with the highest score
+        auto maxe = std::max_element(scores_[ridx].begin(), scores_[ridx].end());
+        assert(maxe != scores_[ridx].end());
+
+        // fill in the goal
+        goal_[ridx].cost = *maxe;
+        goal_[ridx].x = maxe.coord(0);
+        goal_[ridx].y = maxe.coord(1);
+        goal_[ridx].theta = maxe.coord(2);
+    }
 
     std::vector<Locations_c> goals;
     goals.resize(robots_.size());

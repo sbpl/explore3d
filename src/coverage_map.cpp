@@ -48,7 +48,7 @@ unsigned char CoverageMap_c::GetMotionLevelValue(uint ridx, int x, int y) const
     }
 }
 
-std::vector<SearchPts_c> CoverageMap_c::GetFrontier3d()
+std::vector<SearchPts_c> CoverageMap_c::GetFrontier3d() const
 {
     std::vector<SearchPts_c> fpts;
     SearchPts_c temp;

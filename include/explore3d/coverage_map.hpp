@@ -61,7 +61,7 @@ public:
     unsigned char GetMotionLevelValue(uint rn, int x, int y) const;
 
     /// @brief Return all unknown cells that border a freespace cell.
-    std::vector<SearchPts_c> GetFrontier3d();
+    std::vector<SearchPts_c> GetFrontier3d() const;
 
     /// @brief Refresh the two-dimensional distance transform.
     void UpdateDistances();

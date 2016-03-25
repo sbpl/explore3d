@@ -139,17 +139,28 @@ private:
     //
     // param start The starting cell
     // param robotnum The index of the robot to compute shortest paths for
-    bool Dijkstra(const Locations_c& start, int robotnum);
+    bool ComputeTraversalCosts(const Locations_c& start, int robotnum);
 
     bool FindNearestCollisionFreeCell(
         const Locations_c& start,
         int robotnum,
         Locations_c& out) const;
 
-    void CreateFrontier(void);
-    void GenMotionSteps(void);
-    void GenVisibilityRing(void);
-    void ClearCounts(void);
+    // Update the frontier and compute the information gain for a given robot.
+    bool ComputeInformationGain(int ridx);
+
+    // Compute the information gain for a given robot and frontier.
+    //
+    // This variant is useful to avoid computing the frontier multiple times
+    // when computing multiple goals simultaneously.
+    bool ComputeInformationGain(
+        int ridx,
+        const std::vector<SearchPts_c>& frontier);
+
+    void GenMotionSteps();
+    void GenVisibilityRing();
+    void ClearCounts();
+    void ClearInformationGain(int ridx);
     bool bresenham_line_3D(int x1, int y1, int z1, int x2, int y2, int z2);
     void printMap(int height);
     void printCosts(uint x0, uint y0, uint x1, uint y1, uint rn);
@@ -168,7 +179,13 @@ private:
         const SearchPtState& s,
         const SearchPtState& t);
 
+    // Fill counts_[robotnum] with the information gain for each cell.
     void raycast3d(const SearchPts_c& start, int robotnum);
+
+    // Fill counts_[hexanum] with the information gain for each cell.
+    //
+    // This variant reasons that no information gain is available if the given
+    // cell is visible to another robot.
     void raycast3d_hexa(const SearchPts_c& start, int hexanum);
 
     bool inside_room(int x, int y) const;
