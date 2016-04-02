@@ -605,7 +605,7 @@ bool ExplorationThread::bounds_check(const T& point) const
 {
     if ((int) point.x < 0 || (int) point.x >= size_x_ ||
         (int) point.y < 0 || (int) point.y >= size_y_ ||
-        (int) point.z < 0 || (int) point.z >= size_z_)
+        (int) point.z < -1 || (int) point.z >= size_z_) // NOTE: somewhat of hack here but i'm getting annoyed by warnings about the segbot being underground by one cell
     {
         return false;
     }
