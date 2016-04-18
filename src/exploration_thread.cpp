@@ -303,6 +303,11 @@ bool ExplorationThread::compute_all_goals(const ResultCallback& callback)
     return true;
 }
 
+double ExplorationThread::estimate_completion_pct() const
+{
+    return EP_.EstimatedCompletionPercent();
+}
+
 void ExplorationThread::publish_maps()
 {
     std::unique_lock<std::mutex> lock(data_mutex_);
@@ -535,7 +540,7 @@ void ExplorationThread::plannerthread()
             std::vector<Locations_c> goals;
             if (goal_ridx_ < params_.robots.size()) {
                 Locations_c goal;
-                if (EP_.NewGoal(goal_ridx_, plannerthread_curr_locations_[goal_ridx_], goal)) {
+                if (EP_.NewGoal(goal_ridx_, plannerthread_curr_locations_, goal)) {
                     goals.resize(params_.robots.size());
                     goals[goal_ridx_] = goal;
                 }

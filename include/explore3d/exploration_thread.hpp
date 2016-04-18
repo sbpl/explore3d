@@ -76,6 +76,12 @@ public:
     ///     given by this->busy()); false otherwise
     bool compute_all_goals(const ResultCallback& callback);
 
+    /// \brief Return the estimated percentage of the map explored.
+    ///
+    /// The number returned should be a value within [0.0, 1.0] representing the estimated
+    /// number of cells explored in the environment.
+    double estimate_completion_pct() const;
+
     /// @brief Publishes planner maps for debugging; blocking if exploration planner is currently planning.
     void publish_maps();
 

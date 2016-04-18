@@ -7,6 +7,7 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <queue>
 #include <cstdio>
@@ -68,6 +69,9 @@ public:
     std::vector<ScoreMap> scores_;                                      // [robot](x, y, yaw)
     std::vector<std::vector<std::vector<pts2d> > > VisibilityRings_;    // [robot][z][points]
 
+    ExplorationPlanner();
+    ~ExplorationPlanner();
+
     void Init(ExpParams_c initparams);
 
     void UpdateMap(CoverageMap_c new_map);
@@ -77,7 +81,7 @@ public:
     ///
     /// \param robot_pose Copy required since the height of the robot can be
     ///     modified to the assumed nominal height
-    bool NewGoal(size_t ridx, Locations_c robot_pose, Locations_c& goal);
+    bool NewGoal(size_t ridx, std::vector<Locations_c> robot_poses, Locations_c& goal);
 
     /// \brief Compute new exploration goals for both robots.
     ///
@@ -88,6 +92,8 @@ public:
     /// \param robot_poses Copy required since the height of the robot can be
     ///     modified to the assumed nominal height
     std::vector<Locations_c> NewGoals(std::vector<Locations_c> robot_poses);
+
+    double EstimatedCompletionPercent() const;
 
 private:
 
@@ -124,6 +130,8 @@ private:
         SearchPts_c search_pt_;
         bool closed_;
     };
+
+    std::atomic<double> completion_pct_;
 
     void PrecalcVisibilityCircles(void);
 
@@ -175,6 +183,9 @@ private:
     void printMap(int height);
     void printCosts(uint x0, uint y0, uint x1, uint y1, uint rn);
     void printCounts(uint x0, uint y0, uint x1, uint y1, uint rn);
+    void LogData(std::vector<Locations_c> robot_poses);
+    FILE* datafile_;
+    bool data_file_open;
 
     // Compute the score for a given cell based on the values in CostToPts_,
     // counts_ at the given robot index, and the values of goal_ at all other

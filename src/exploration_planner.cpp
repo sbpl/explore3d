@@ -13,6 +13,17 @@
 #include <ros/console.h>
 #include <explore3d/Grid.h>
 
+ExplorationPlanner::ExplorationPlanner() :
+    completion_pct_(0.5)
+{
+
+}
+
+ExplorationPlanner::~ExplorationPlanner() {
+  fclose(datafile_);
+}
+
+
 void ExplorationPlanner::Init(ExpParams_c initparams)
 {
     FREESPACE = initparams.freespace;
@@ -496,9 +507,10 @@ void ExplorationPlanner::SelectGoal(size_t ridx)
 
 bool ExplorationPlanner::NewGoal(
     size_t ridx,
-    Locations_c robot_pose,
+    std::vector<Locations_c> robot_poses,
     Locations_c& goal)
 {
+    Locations_c robot_pose = robot_poses[ridx];
     robot_pose.z = robots_[ridx].MotionHeight_;
 
     if (!ComputeTraversalCosts(robot_pose, ridx)) {
@@ -519,6 +531,7 @@ bool ExplorationPlanner::NewGoal(
     goal.z = goal_[ridx].z;
     goal.theta = goal_[ridx].theta;
 
+LogData(robot_poses);
     return true;
 }
 
@@ -554,6 +567,11 @@ std::vector<Locations_c> ExplorationPlanner::NewGoals(
         goals[ridx].theta = goal_[ridx].theta;
     }
     return goals;
+}
+
+double ExplorationPlanner::EstimatedCompletionPercent() const
+{
+    return completion_pct_.load();
 }
 
 void ExplorationPlanner::UpdateMap(CoverageMap_c newmap)
@@ -769,7 +787,19 @@ bool ExplorationPlanner::inside_room(int x, int y) const
         ROS_WARN_THROTTLE(1.0, "Invalid room boundaries [%d,%d] X [%d,%d]", room_min_x_, room_min_y_, room_max_x_, room_max_y_);
         return true;
     }
-
     return x >= room_min_x_ && x <= room_max_x_ && y >= room_min_y_ && y <= room_max_y_;
 }
 
+void ExplorationPlanner::LogData(std::vector<Locations_c> robot_poses) {
+  if (!data_file_open) {
+    std::ostringstream fname;
+    fname << "logfile" << ros::Time::now().toSec();
+    datafile_ = fopen(fname.str().c_str(), "w");
+    if (datafile_!= NULL) { data_file_open= true; }
+    fprintf(datafile_, "time (seconds)\tSegbot pose (discretized x,y,z,theta)\tHexa pose (discretized x,y,z,theta)\tPercent Explored\n");
+  } else {
+    //TODO: use actual indexes vice hardcoded numbers
+    //TODO: Add percent explored
+    fprintf(datafile_, "%5.1f %i %i %i %i %i %i %i %i\n", (double)ros::Time::now().toSec(), robot_poses[0].x, robot_poses[0].y, robot_poses[0].z, robot_poses[0].theta, robot_poses[1].x, robot_poses[1].y, robot_poses[1].z, robot_poses[1].theta);
+  }
+}
