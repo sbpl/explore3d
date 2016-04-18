@@ -131,6 +131,7 @@ private:
         bool closed_;
     };
 
+    int m_explored_cell_count;
     std::atomic<double> completion_pct_;
 
     void PrecalcVisibilityCircles(void);

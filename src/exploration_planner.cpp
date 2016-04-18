@@ -14,6 +14,7 @@
 #include <explore3d/Grid.h>
 
 ExplorationPlanner::ExplorationPlanner() :
+    m_explored_cell_count(0),
     completion_pct_(0.5)
 {
 
@@ -583,8 +584,36 @@ void ExplorationPlanner::UpdateMap(CoverageMap_c newmap)
 void ExplorationPlanner::PartialUpdateMap(const std::vector<MapElement_c>& pts)
 {
     for (size_t pidx = 0; pidx < pts.size(); pidx++) {
-        coverage_.Setval(pts[pidx].x, pts[pidx].y, pts[pidx].z, pts[pidx].data);
+        const int px = pts[pidx].x;
+        const int py = pts[pidx].y;
+        const int pz = pts[pidx].z;
+        // new explored cell
+        const unsigned char prev_value = coverage_.Getval(px, py, pz);
+        const          char next_value = pts[pidx].data;
+
+        if (prev_value != FREESPACE && next_value == FREESPACE) {
+            ++m_explored_cell_count;
+        }
+        else if (prev_value == FREESPACE && next_value != FREESPACE) {
+            --m_explored_cell_count;
+        }
+
+        coverage_.Setval(px, py, pz, pts[pidx].data);
     }
+
+    // update the explored percentage
+    const int total_volume = coverage_.x_size_ * coverage_.y_size_ * coverage_.z_size_;
+    const int maximum_explorage = total_volume >> 1;
+
+    double explored_pct = (double)m_explored_cell_count /
+            (double)maximum_explorage;
+
+    // lazy programmer is lazy...this clamps to [0.0, 1.0]
+    explored_pct = std::max(0.0, explored_pct);
+    explored_pct = std::min(0.99, explored_pct);
+
+    completion_pct_.store(explored_pct);
+
     coverage_.UpdateDistances();
 }
 
