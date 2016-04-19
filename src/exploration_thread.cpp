@@ -451,13 +451,16 @@ bool ExplorationThread::read_cost_params()
     // assumes read_map_params should have been read by now
 
     const double scale = 20.0;
+    // TODO: in the future, to the unlucky grad student who uses this code, or
+    // to andrew, i am sorry to myself, this needs to come from ROS parameters
+    const double cellres = 0.2;
     int objectmaxelev, obs, freespace, unk, mindist;
     double backwards_penalty;
     ph_.param<int>("objectmaxelev", objectmaxelev, (uint) 1.5 * scale); // max height to consider for the OOI (cells)
     ph_.param<int>("obsvalue", obs, 100); // values for obstacles, freespace, unknown
     ph_.param<int>("freevalue", freespace, 50);
     ph_.param<int>("unkvalue", unk, 0);
-    ph_.param<int>("mindist", mindist, (uint) 1.2 * scale); // closest robots should operate without penalty (cells)
+    ph_.param<int>("mindist", mindist, (uint) 1.2 / cellres); // closest robots should operate without penalty (cells)
     ph_.param<double>("backwards_penalty", backwards_penalty, 1.0);
 
     // by default the starting line is outside the map
