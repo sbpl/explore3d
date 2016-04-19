@@ -15,7 +15,7 @@
 
 ExplorationPlanner::ExplorationPlanner() :
     m_explored_cell_count(0),
-    completion_pct_(0.5)
+    completion_pct_(0.0)
 {
 
 }
@@ -410,7 +410,8 @@ CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn) co
 
     double dist = 1e99;
     for (size_t ridx = 0; ridx < goal_.size(); ridx++) {
-        if (ridx != rn) {
+//        if (ridx != rn)
+        {
             double temp_dist =
                     (x - goal_[ridx].x) * (x - goal_[ridx].x) +
                     (y - goal_[ridx].y) * (y - goal_[ridx].y) +
@@ -422,7 +423,8 @@ CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn) co
     }
 
     if (dist < MinDist_ * MinDist_) {
-        dist /= (MinDist_ * MinDist_);
+//        dist /= (MinDist_ * MinDist_);
+        return 0;
     }
     else {
         dist = 1;
