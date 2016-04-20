@@ -408,6 +408,19 @@ CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn) co
         return 0;
     }
 
+    bool height_obstacle = false;
+    for (size_t ridx = 0; ridx < goal_.size(); ++ridx) {
+        if (ridx != rn) {
+            if (!coverage_.OnInflatedMap(
+                    x, y, robots_[ridx].SensorHeight_, ridx, robots_[ridx].CircularSize_))
+            {
+                height_obstacle = true;
+                break;
+            }
+        }
+    }
+
+
     double dist = 1e99;
     for (size_t ridx = 0; ridx < goal_.size(); ridx++) {
 //        if (ridx != rn)
@@ -430,7 +443,12 @@ CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn) co
         dist = 1;
     }
 
-    return counts_[rn](x, y, a) * CostToPts_[rn](x, y) * dist;
+    double height_penalty = 1.0;
+    if (height_obstacle) {
+        height_penalty = 0.2;
+    }
+
+    return counts_[rn](x, y, a) * CostToPts_[rn](x, y) * dist * height_penalty;
 }
 
 bool ExplorationPlanner::ComputeInformationGain(int ridx)
@@ -783,15 +801,29 @@ void ExplorationPlanner::raycast3d_hexa(const SearchPts_c& start, int hexanum)
 
     const int HEXA_IDX = 1;
 
-    // for every robot
+    // ignore cells that are not obstacles in some other robot's collision map
     for (int ridx = 0; ridx < (int)robots_.size(); ++ridx) {
-        // other than the hexa
         if (ridx != HEXA_IDX) {
             if (coverage_.GetMotionLevelValue(ridx, start.x, start.y) != OBS) {
-                // skip if there is not on obstacle on this robot's coverage map at this (x, y) coord
                 return;
             }
         }
+    }
+
+    // ignore cells that are not on top of high surfaces
+    // if not (cell is higher than threshold and cell immediate underneath is obstacle)
+    //     return
+    const double cell_res_m = 0.2;
+    const int height_thresh_cells = 4.1 * 12.0 * 2.54 / 100.0 / cell_res_m;
+    ROS_INFO_ONCE("Height Threshold (cells) = %d", height_thresh_cells);
+
+    if (start.z != 0 &&
+        !(
+            start.z >= height_thresh_cells &&
+            coverage_.Getval(start.x, start.y, start.z - 1) == OBS)
+        )
+    {
+        return;
     }
 
     auto& count_map = counts_[hexanum];
