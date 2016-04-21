@@ -404,6 +404,23 @@ bool ExplorationPlanner::FindNearestCollisionFreeCell(
 
 CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn) const
 {
+    const size_t HEXA_IDX = 1;
+    if (rn == HEXA_IDX) { // BEN SAYS TO PUT SOME DANGER IN HERE
+
+//        const double hexacopter_room_min_x_m = 6.0; // in cells
+//        const double hexacopter_room_max_x_m = -0.5; // in cells
+//        const double hexacopter_room_min_y_m = 16.3; // in cells
+//        const double hexacopter_room_max_y_m = 14.3; // in cells
+
+        const double hexacopter_room_min_x_m = 6.0;
+        const double min_x = -0.5;
+        const double cellres_m = 0.2;
+        const int hexacopter_room_min_x = (int)ceil((hexacopter_room_min_x_m - min_x) / cellres_m);
+        if (x < hexacopter_room_min_x) {
+            return -1.0;
+        }
+    }
+
     if (CostToPts_[rn](x, y) == MaxCost) {
         return 0;
     }
@@ -421,6 +438,7 @@ CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn) co
     }
 
 
+    // calculate distance to most recent set of goals
     double dist = 1e99;
     for (size_t ridx = 0; ridx < goal_.size(); ridx++) {
 //        if (ridx != rn)
@@ -435,6 +453,7 @@ CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn) co
         }
     }
 
+    // disallow new goals next to recent goals
     if (dist < MinDist_ * MinDist_) {
 //        dist /= (MinDist_ * MinDist_);
         return 0;
@@ -443,11 +462,13 @@ CostType ExplorationPlanner::EvalFxn(uint x, uint y, uint z, uint a, uint rn) co
         dist = 1;
     }
 
+    // penalize cells with obstacles in other robots' maps
     double height_penalty = 1.0;
     if (height_obstacle) {
         height_penalty = 0.2;
     }
 
+    // this is only for the hexacopter
     return counts_[rn](x, y, a) * CostToPts_[rn](x, y) * dist * height_penalty;
 }
 
