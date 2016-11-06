@@ -797,8 +797,7 @@ void ExplorationPlanner::raycast3d(const SearchPts_c& start, int robotnum)
             continue;
         }
         z = robots_[robotnum].SensorHeight_;
-        // note: leaving this here to serve as a reminder of the worst bug of the UTACC Project
-        // theta = (VisibilityRings_[robotnum][start.z][pidx].theta) % NumAngles_;
+        // rotate visibility ring angle by 180 degrees
         theta = (VisibilityRings_[robotnum][start.z][pidx].theta + (NumAngles_ >> 1)) % NumAngles_;
         if (coverage_.Getval(x, y, z) == FREESPACE) {
             bool result = bresenham_line_3D(start.x, start.y, start.z, x, y, z);
