@@ -835,8 +835,7 @@ void ExplorationPlanner::raycast3d_hexa(const SearchPts_c& start, int hexanum)
         x = VisibilityRings_[hexanum][start.z][pidx].x + start.x;
         y = VisibilityRings_[hexanum][start.z][pidx].y + start.y;
         z = robots_[hexanum].SensorHeight_;
-        // note: leaving this here to serve as a reminder of the worst bug of the UTACC Project
-        // theta = (VisibilityRings_[hexanum][start.z][pidx].theta) % NumAngles_;
+        // note: see note in raycast3d()
         theta = (VisibilityRings_[hexanum][start.z][pidx].theta + (NumAngles_ >> 1)) % NumAngles_;
         if (coverage_.Getval(x, y, z) == FREESPACE) {
             bool result = bresenham_line_3D(start.x, start.y, start.z, x, y, z);
